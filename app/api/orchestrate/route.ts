@@ -166,7 +166,7 @@ async function runPricingAgent(product: string, ourPrice: number, location: stri
     return {
       product,
       ourPrice,
-      prices: match?.prices || [{"name": "Fallback Cafe", "price": 4.99}],
+      prices: match?.prices || [{"name": "Fallback Cafe", "price": 4.04}],
       delta: match?.delta || -0.10,
       valueMessage: 'Our prices are competitive — and our quality speaks for itself.',
       citations: [],
