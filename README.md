@@ -42,3 +42,5 @@ Open http://localhost:3000.
 - **Pricing** — live competitor price comparison via Perplexity API
 - **Business Profile** — configurable business info stored in SQLite
 - **Retention View** — track contacted, responded, and won-back customers
+
+This is an easter egg
