@@ -13,5 +13,5 @@ ELEVENLABS_API_KEY=YOUR_API_KEY<br>
 
 How to run:
 1. npm install
-
-2. npm run dev
+2. npm run seed
+3. npm run dev

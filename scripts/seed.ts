@@ -80,6 +80,15 @@ db.exec(`
     comments TEXT NOT NULL,
     surveyInfluence REAL NOT NULL
   );
+
+  CREATE TABLE business_profiles (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    location TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    popularProducts TEXT NOT NULL DEFAULT '[]'
+  );
+
+  INSERT INTO business_profiles (id) VALUES ('default');
 `)
 
 console.log("Tables created")

@@ -57,8 +57,6 @@ export function usePulse() {
   return ctx
 }
 
-const PROFILE_KEY = "pulse-business-profile"
-
 const defaultProfile: BusinessProfile = {
   location: "",
   description: "",
@@ -76,16 +74,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false)
   const [businessProfile, setBusinessProfileState] = useState<BusinessProfile>(defaultProfile)
 
-  useEffect(() => {
-    const saved = localStorage.getItem(PROFILE_KEY)
-    if (saved) {
-      try { setBusinessProfileState(JSON.parse(saved)) } catch {}
-    }
-  }, [])
-
   const setBusinessProfile = (profile: BusinessProfile) => {
     setBusinessProfileState(profile)
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile))
   }
 
   useEffect(() => {
@@ -93,10 +83,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       fetch("/api/customers").then((r) => r.json()),
       fetch("/api/businesses").then((r) => r.json()),
       fetch("/api/products").then((r) => r.json()),
-    ]).then(([custData, bizData, prodData]) => {
+      fetch("/api/profile").then((r) => r.json()),
+    ]).then(([custData, bizData, prodData, profileData]) => {
       setCustomers(custData.customers || custData)
       setBusinessData(bizData)
       setCatalogData(prodData)
+      if (profileData.location) setBusinessProfileState(profileData)
       setLoaded(true)
     })
   }, [])

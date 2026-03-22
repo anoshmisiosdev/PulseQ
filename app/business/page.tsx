@@ -10,30 +10,24 @@ interface BusinessProfile {
   popularProducts: string[]
 }
 
-const STORAGE_KEY = "pulse-business-profile"
-
-function loadProfile(): BusinessProfile {
-  if (typeof window === "undefined") return { location: "", description: "", popularProducts: [] }
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) return JSON.parse(saved)
-  } catch {}
-  return { location: "", description: "", popularProducts: [] }
-}
-
 export default function BusinessPage() {
   const [location, setLocation] = useState("")
   const [description, setDescription] = useState("")
   const [popularProducts, setPopularProducts] = useState<string[]>([])
   const [newProduct, setNewProduct] = useState("")
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    const profile = loadProfile()
-    setLocation(profile.location)
-    setDescription(profile.description)
-    setPopularProducts(profile.popularProducts)
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((profile: BusinessProfile) => {
+        setLocation(profile.location || "")
+        setDescription(profile.description || "")
+        setPopularProducts(profile.popularProducts || [])
+      })
+      .catch(() => {})
   }, [])
 
   const addProduct = useCallback(() => {
@@ -49,7 +43,7 @@ export default function BusinessPage() {
     setPopularProducts((prev) => prev.filter((p) => p !== product))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newErrors: Record<string, boolean> = {}
     if (!location.trim()) newErrors.location = true
     if (!description.trim()) newErrors.description = true
@@ -60,15 +54,28 @@ export default function BusinessPage() {
       return
     }
 
-    const profile: BusinessProfile = {
-      location: location.trim(),
-      description: description.trim(),
-      popularProducts,
+    setSaving(true)
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location: location.trim(),
+          description: description.trim(),
+          popularProducts,
+        }),
+      })
+
+      if (!res.ok) throw new Error("Save failed")
+
+      setSaved(true)
+      setErrors({})
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      console.error("Failed to save profile:", e)
+    } finally {
+      setSaving(false)
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
-    setSaved(true)
-    setErrors({})
-    setTimeout(() => setSaved(false), 2500)
   }
 
   return (
@@ -282,7 +289,8 @@ export default function BusinessPage() {
       {/* Save Button */}
       <button
         onClick={handleSave}
-        className="w-full py-4 rounded-xl flex items-center justify-center gap-2 transition-all press-scale"
+        disabled={saving}
+        className="w-full py-4 rounded-xl flex items-center justify-center gap-2 transition-all press-scale disabled:opacity-70"
         style={{
           fontFamily: "var(--font-body)",
           fontWeight: 600,

@@ -133,6 +133,32 @@ export function getAllCustomers() {
   }))
 }
 
+// ── Business Profile ───────────────────────────────────
+
+export interface BusinessProfileRow {
+  location: string
+  description: string
+  popularProducts: string[]
+}
+
+export function getBusinessProfile(): BusinessProfileRow {
+  const db = getDb()
+  const row = db.prepare("SELECT * FROM business_profiles WHERE id = 'default'").get() as any
+  if (!row) return { location: "", description: "", popularProducts: [] }
+  return {
+    location: row.location,
+    description: row.description,
+    popularProducts: JSON.parse(row.popularProducts),
+  }
+}
+
+export function saveBusinessProfile(profile: BusinessProfileRow): void {
+  const db = getDb()
+  db.prepare(
+    "INSERT OR REPLACE INTO business_profiles (id, location, description, popularProducts) VALUES ('default', ?, ?, ?)"
+  ).run(profile.location, profile.description, JSON.stringify(profile.popularProducts))
+}
+
 export function getAllSurveys(): { responses: SurveyRow[] } {
   const db = getDb()
   const rows = db.prepare("SELECT * FROM surveys").all() as (Omit<SurveyRow, "wouldRecommend"> & { wouldRecommend: number })[]
