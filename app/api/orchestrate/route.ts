@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import type { Customer } from "@/lib/rfm"
-import { getAllCompetitors, getAllProducts } from "@/lib/db"
+import { getAllCompetitors, getAllProducts, getCachedPrice, setCachedPrice } from "@/lib/db"
 
 interface OrchestrateRequest {
   customer: Customer
@@ -85,6 +85,26 @@ Return ONLY valid JSON:
 }
 
 async function runPricingAgent(product: string, ourPrice: number) {
+  // Check cache first
+  const cached = getCachedPrice(product)
+  if (cached) {
+    const competitors = [cached.amazon, cached.target, cached.walmart].filter((p): p is number => p != null)
+    const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice
+    const delta = ourPrice - lowestPrice
+
+    return {
+      product,
+      ourPrice,
+      amazon: cached.amazon,
+      target: cached.target,
+      walmart: cached.walmart,
+      delta: Math.round(delta * 100) / 100,
+      valueMessage: 'Our prices are competitive — and our quality speaks for itself.',
+      citations: cached.citations,
+      source: 'cache',
+    }
+  }
+
   try {
     const pResp = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
@@ -121,6 +141,16 @@ async function runPricingAgent(product: string, ourPrice: number) {
         role: 'user',
         content: `Our "${product}" is $${ourPrice}. Lowest competitor: $${lowestPrice}. Delta: $${delta.toFixed(2)}. Write ONE warm sentence about our pricing advantage for a win-back email. No quotes.`
       }]
+    })
+
+    // Cache the result
+    setCachedPrice({
+      product,
+      amazon: prices.amazon ?? null,
+      target: prices.target ?? null,
+      walmart: prices.walmart ?? null,
+      delta: Math.round(delta * 100) / 100,
+      citations: pData.citations || [],
     })
 
     return {

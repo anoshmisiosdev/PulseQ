@@ -159,6 +159,54 @@ export function saveBusinessProfile(profile: BusinessProfileRow): void {
   ).run(profile.location, profile.description, JSON.stringify(profile.popularProducts))
 }
 
+// ── Price Cache ────────────────────────────────────────
+
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
+
+export interface PriceCacheRow {
+  product: string
+  amazon: number | null
+  target: number | null
+  walmart: number | null
+  delta: number | null
+  citations: string[]
+  fetchedAt: string
+}
+
+export function getCachedPrice(product: string): PriceCacheRow | null {
+  const db = getDb()
+  const row = db.prepare("SELECT * FROM price_cache WHERE product = ?").get(product) as any
+  if (!row) return null
+
+  const fetchedAt = new Date(row.fetchedAt).getTime()
+  if (Date.now() - fetchedAt > CACHE_TTL_MS) return null
+
+  return {
+    product: row.product,
+    amazon: row.amazon,
+    target: row.target,
+    walmart: row.walmart,
+    delta: row.delta,
+    citations: JSON.parse(row.citations),
+    fetchedAt: row.fetchedAt,
+  }
+}
+
+export function setCachedPrice(data: Omit<PriceCacheRow, "fetchedAt">): void {
+  const db = getDb()
+  db.prepare(
+    "INSERT OR REPLACE INTO price_cache (product, amazon, target, walmart, delta, citations, fetchedAt) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    data.product,
+    data.amazon,
+    data.target,
+    data.walmart,
+    data.delta,
+    JSON.stringify(data.citations),
+    new Date().toISOString()
+  )
+}
+
 export function getAllSurveys(): { responses: SurveyRow[] } {
   const db = getDb()
   const rows = db.prepare("SELECT * FROM surveys").all() as (Omit<SurveyRow, "wouldRecommend"> & { wouldRecommend: number })[]

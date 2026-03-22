@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getCachedPrice, setCachedPrice } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
@@ -8,6 +9,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing product' }, { status: 400 })
     }
 
+    // Check cache first
+    const cached = getCachedPrice(product)
+    if (cached) {
+      const competitors = [cached.amazon, cached.target, cached.walmart].filter((p): p is number => p != null)
+      const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
+      const delta = (ourPrice || 5.00) - lowestPrice
+
+      return NextResponse.json({
+        product,
+        ourPrice,
+        amazon: cached.amazon,
+        target: cached.target,
+        walmart: cached.walmart,
+        delta: Math.round(delta * 100) / 100,
+        citations: cached.citations,
+        source: 'cache',
+        cachedAt: cached.fetchedAt,
+      })
+    }
+
+    // Cache miss — call Perplexity
     const pResp = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -34,6 +56,16 @@ export async function POST(request: Request) {
     const competitors = [prices.amazon, prices.target, prices.walmart].filter((p: any) => p != null)
     const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
     const delta = (ourPrice || 5.00) - lowestPrice
+
+    // Store in cache
+    setCachedPrice({
+      product,
+      amazon: prices.amazon ?? null,
+      target: prices.target ?? null,
+      walmart: prices.walmart ?? null,
+      delta: Math.round(delta * 100) / 100,
+      citations: pData.citations || [],
+    })
 
     return NextResponse.json({
       product,

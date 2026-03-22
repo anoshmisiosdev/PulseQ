@@ -5,7 +5,6 @@ import Link from "next/link"
 import { ShoppingBag, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Minus, AlertCircle, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const STORAGE_KEY = "pulse-business-profile"
 
 interface MarketData {
   product: string
@@ -15,7 +14,7 @@ interface MarketData {
   walmart: number | null
   delta: number | null
   citations: string[]
-  source: "perplexity_live" | "fallback_static"
+  source: "perplexity_live" | "fallback_static" | "cache"
   loading: boolean
   error: boolean
 }
@@ -154,11 +153,11 @@ function ProductCard({ data, yourPrice, onPriceChange }: {
           style={{
             fontFamily: "var(--font-body)",
             fontWeight: 600,
-            background: data.source === "perplexity_live" ? "rgba(8,145,178,0.1)" : "rgba(148,163,184,0.12)",
-            color: data.source === "perplexity_live" ? "#0891b2" : "#94a3b8",
+            background: data.source === "perplexity_live" ? "rgba(8,145,178,0.1)" : data.source === "cache" ? "rgba(16,185,129,0.1)" : "rgba(148,163,184,0.12)",
+            color: data.source === "perplexity_live" ? "#0891b2" : data.source === "cache" ? "#059669" : "#94a3b8",
           }}
         >
-          {data.source === "perplexity_live" ? "● Live" : "Cached"}
+          {data.source === "perplexity_live" ? "● Live" : data.source === "cache" ? "● Cached" : "Fallback"}
         </span>
       </div>
 
@@ -244,16 +243,15 @@ export default function PricesPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
-  // Load products from localStorage
+  // Load products from DB profile
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const profile = JSON.parse(saved)
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((profile) => {
         setProducts(profile.popularProducts || [])
-      }
-    } catch {}
-    setLoaded(true)
+        setLoaded(true)
+      })
+      .catch(() => setLoaded(true))
   }, [])
 
   const fetchMarketData = useCallback(async (productList: string[]) => {
