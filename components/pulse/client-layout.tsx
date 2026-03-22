@@ -3,6 +3,9 @@
 import { useState, useEffect, createContext, useContext } from "react"
 import { AppShell } from "./app-shell"
 import type { Customer } from "@/lib/rfm"
+import rawCustomers from "@/lib/data/customers.json"
+import rawBusiness from "@/lib/data/business.json"
+import rawCatalog from "@/lib/data/catalog.json"
 
 export interface BusinessProfile {
   location: string
@@ -63,7 +66,7 @@ const defaultProfile: BusinessProfile = {
 }
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
-  const [businessType, setBusinessType] = useState<"coffee_shop" | "gym" | "boutique">("coffee_shop")
+  const [businessType] = useState<"coffee_shop" | "gym" | "boutique">("coffee_shop")
   const [revenueRecovered, setRevenueRecovered] = useState(0)
   const [wonBackCount, setWonBackCount] = useState(0)
   const [wonBackIds, setWonBackIds] = useState<Set<string>>(new Set())

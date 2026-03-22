@@ -4,13 +4,15 @@ import { useState, useRef } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Users, Target, Activity, Volume2, Store } from "lucide-react"
+import { LayoutDashboard, Users, Target, Activity, Volume2, Store, BarChart2 } from "lucide-react"
+import businessData from "@/lib/data/business.json"
 import { usePulse } from "./client-layout"
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/retention", label: "Retention", icon: Target },
+  { href: "/prices", label: "Prices", icon: BarChart2 },
   { href: "/business", label: "Business", icon: Store },
 ]
 
