@@ -6,7 +6,7 @@ import { StatCard } from "./stat-card"
 import { DetailPanel } from "./detail-panel"
 import { cn } from "@/lib/utils"
 import type { Customer } from "@/lib/rfm"
-import { calculateAtRiskRevenue, getCriticalCount, getAverageDaysSince } from "@/lib/rfm"
+import { ANNUAL_VISIT_MULTIPLIER, calculateAtRiskRevenue, getCriticalCount, getAverageDaysSince } from "@/lib/rfm"
 import { Play, Square, Coffee, Dumbbell, Store, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePulse } from "./client-layout"
@@ -72,7 +72,7 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
   }, [customers])
 
   const handleWonBack = useCallback((customer: Customer) => {
-    const recovery = customer.avgTransactionValue * 12
+    const recovery = customer.avgTransactionValue * ANNUAL_VISIT_MULTIPLIER
     setRevenueRecovered((prev) => prev + recovery)
     setWonBackCount((prev) => prev + 1)
   }, [])
