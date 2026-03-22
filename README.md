@@ -44,3 +44,4 @@ Open http://localhost:3000.
 - **Retention View** — track contacted, responded, and won-back customers
 
 This is an easter egg
+Vercel please let others deploy without paying money
