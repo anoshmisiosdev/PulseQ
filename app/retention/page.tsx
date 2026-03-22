@@ -255,7 +255,7 @@ export default function RetentionPage() {
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#10b981] mt-0.5 flex-shrink-0" />
-                <span><strong>Mark them as Won Back</strong> when they return so you can track your progress.</span>
+                <span><strong>Mark them as retained.</strong> when they return so you can track your progress.</span>
               </li>
             </ul>
           </div>
