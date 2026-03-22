@@ -102,18 +102,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       setBusinessData(bizData)
       setCatalogData(prodData)
       if (profileData.location) setBusinessProfileState(profileData)
-      // Restore retained state from DB
-      const ids: string[] = retainedData.ids || []
-      if (ids.length > 0) {
-        setWonBackIds(new Set(ids))
-        setWonBackCount(ids.length)
-        // Recalculate recovered revenue from customer data
-        const allCustomers: Customer[] = custData.customers || custData
-        const recovered = allCustomers
-          .filter((c: Customer) => ids.includes(c.id))
-          .reduce((sum: number, c: Customer) => sum + c.avgTransactionValue * 12, 0)
-        setRevenueRecovered(recovered)
-      }
       setLoaded(true)
     })
   }, [])
@@ -123,6 +111,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     setRevenueRecovered((prev) => prev + recovery)
     setWonBackCount((prev) => prev + 1)
     setWonBackIds((prev) => new Set(prev).add(customer.id))
+    // Persist to DB
+    fetch("/api/customers/retain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId: customer.id }),
+    }).catch((err) => console.error("Failed to persist retain:", err))
   }
 
   if (!loaded) {

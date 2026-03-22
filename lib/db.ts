@@ -218,23 +218,6 @@ export async function setCachedPrice(input: Omit<PriceCacheRow, "fetchedAt">): P
   if (error) throw error
 }
 
-// ── Retained Customers ────────────────────────────────
-
-export async function getRetainedCustomerIds(): Promise<string[]> {
-  const { data, error } = await supabase.from("retained_customers").select("customerId")
-  if (error) return []
-  return (data || []).map((r: any) => r.customerId)
-}
-
-export async function markCustomerRetained(customerId: string, revenueRecovered: number): Promise<void> {
-  const { error } = await supabase.from("retained_customers").upsert({
-    customerId,
-    revenueRecovered,
-    retainedAt: new Date().toISOString(),
-  }, { onConflict: 'customerId' })
-  if (error) throw error
-}
-
 export async function getAllSurveys(): Promise<{ responses: SurveyRow[] }> {
   const { data, error } = await supabase.from("surveys").select("*")
   if (error) throw error
