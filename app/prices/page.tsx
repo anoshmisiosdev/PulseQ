@@ -234,6 +234,8 @@ function ProductCard({ data, yourPrice, onPriceChange }: {
   )
 }
 
+const CACHE_TTL = 2 * 60 * 60 * 1000 // 2 hours
+
 export default function PricesPage() {
   const [products, setProducts] = useState<string[]>([])
   const [marketData, setMarketData] = useState<MarketData[]>([])
@@ -279,40 +281,50 @@ export default function PricesPage() {
       )
     )
 
-    setMarketData(
-      productList.map((product, i) => {
-        const result = results[i]
-        if (result.status === "fulfilled") {
-          const d = result.value
-          return {
-            product,
-            ourPrice: d.ourPrice,
-            prices: d.prices || [],
-            delta: d.delta ?? null,
-            citations: d.citations || [],
-            source: d.source || "fallback_static",
-            loading: false,
-            error: false,
-          }
-        }
+    const fresh = productList.map((product, i) => {
+      const result = results[i]
+      if (result.status === "fulfilled") {
+        const d = result.value
         return {
           product,
-          ourPrice: null,
-          prices: [],
-          delta: null,
-          citations: [],
-          source: "fallback_static",
+          ourPrice: d.ourPrice,
+          prices: d.prices || [],
+          delta: d.delta ?? null,
+          citations: d.citations || [],
+          source: d.source || "fallback_static",
           loading: false,
-          error: true,
-        }
-      })
-    )
+          error: false,
+        } as MarketData
+      }
+      return {
+        product,
+        ourPrice: null,
+        prices: [],
+        delta: null,
+        citations: [],
+        source: "fallback_static",
+        loading: false,
+        error: true,
+      } as MarketData
+    })
+
+    setMarketData(fresh)
   }, [])
 
+  // Initial fetch (DB cache handles staleness)
   useEffect(() => {
     if (products.length > 0) {
       fetchMarketData(products)
     }
+  }, [products, fetchMarketData])
+
+  // Auto-reload every 2 hours while page is open
+  useEffect(() => {
+    if (products.length === 0) return
+    const timer = setInterval(() => {
+      fetchMarketData(products, true)
+    }, CACHE_TTL)
+    return () => clearInterval(timer)
   }, [products, fetchMarketData])
 
   const handleRefresh = async () => {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, createContext, useContext } from "react"
 import { AppShell } from "./app-shell"
-import type { Customer } from "@/lib/rfm"
+import { ANNUAL_VISIT_MULTIPLIER, type Customer } from "@/lib/rfm"
 import rawCustomers from "@/lib/data/customers.json"
 import rawBusiness from "@/lib/data/business.json"
 import rawCatalog from "@/lib/data/catalog.json"
@@ -107,7 +107,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   }, [])
 
   const addWonBack = (customer: Customer) => {
-    const recovery = customer.avgTransactionValue * 12
+    const recovery = customer.avgTransactionValue * ANNUAL_VISIT_MULTIPLIER
     setRevenueRecovered((prev) => prev + recovery)
     setWonBackCount((prev) => prev + 1)
     setWonBackIds((prev) => new Set(prev).add(customer.id))

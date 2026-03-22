@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
-import type { Customer } from "@/lib/rfm"
+import { ANNUAL_VISIT_MULTIPLIER, type Customer } from "@/lib/rfm"
 
 interface BriefingRequest {
   customers: Customer[]
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const suddenDrops = customers.filter(c => c.pattern === 'sudden_drop')
     const gradualFades = customers.filter(c => c.pattern === 'gradual_fade')
     const groupChurns = customers.filter(c => c.pattern === 'group_churn')
-    const atRiskRevenue = critical.reduce((s, c) => s + c.avgTransactionValue * 12, 0)
+    const atRiskRevenue = critical.reduce((s, c) => s + c.avgTransactionValue * ANNUAL_VISIT_MULTIPLIER, 0)
     const topAtRisk = critical.sort((a, b) => b.churnScore - a.churnScore).slice(0, 3)
 
     const businessData = business || { name: 'Hayward Coffee Co.', type: 'coffee_shop', voiceId: '21m00Tcm4TlvDq8ikWAM', voiceName: 'Rachel' }

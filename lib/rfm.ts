@@ -1,3 +1,6 @@
+// Coffee shop customers visit ~2x/week = 104 visits/year
+export const ANNUAL_VISIT_MULTIPLIER = 104
+
 export interface Transaction {
   date: string
   amount: number
@@ -88,7 +91,7 @@ export function getRiskColor(churnScore: number, confidenceLevel: string): strin
 export function calculateAtRiskRevenue(customers: Customer[]): number {
   return customers
     .filter((c) => c.churnScore >= 50 && c.confidenceLevel !== "low")
-    .reduce((sum, c) => sum + c.avgTransactionValue * 12, 0)
+    .reduce((sum, c) => sum + c.avgTransactionValue * ANNUAL_VISIT_MULTIPLIER, 0)
 }
 
 export function getCriticalCount(customers: Customer[]): number {
