@@ -3,28 +3,30 @@ import { getCachedPrice, setCachedPrice, getBusinessProfile } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
-    const { product, ourPrice } = await request.json()
+    const { product, ourPrice, forceRefresh } = await request.json()
 
     if (!product) {
       return NextResponse.json({ error: 'Missing product' }, { status: 400 })
     }
 
     // Check cache first
-    const cached = await getCachedPrice(product)
-    if (cached) {
-      const competitors = (cached.prices || []).map((p: any) => p.price).filter((p): p is number => p != null)
-      const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
-      const delta = (ourPrice || 5.00) - lowestPrice
+    if (!forceRefresh) {
+      const cached = await getCachedPrice(product)
+      if (cached) {
+        const competitors = (cached.prices || []).map((p: any) => p.price).filter((p): p is number => p != null)
+        const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
+        const delta = (ourPrice || 5.00) - lowestPrice
 
-      return NextResponse.json({
-        product,
-        ourPrice,
-        prices: cached.prices || [],
-        delta: Math.round(delta * 100) / 100,
-        citations: cached.citations,
-        source: 'cache',
-        cachedAt: cached.fetchedAt,
-      })
+        return NextResponse.json({
+          product,
+          ourPrice,
+          prices: cached.prices || [],
+          delta: Math.round(delta * 100) / 100,
+          citations: cached.citations,
+          source: 'cache',
+          cachedAt: cached.fetchedAt,
+        })
+      }
     }
 
     // Cache miss — call Perplexity

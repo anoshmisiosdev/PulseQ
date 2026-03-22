@@ -252,7 +252,7 @@ export default function PricesPage() {
       .catch(() => setLoaded(true))
   }, [])
 
-  const fetchMarketData = useCallback(async (productList: string[]) => {
+  const fetchMarketData = useCallback(async (productList: string[], forceRefresh: boolean = false) => {
     if (productList.length === 0) return
 
     // Initialise loading states
@@ -269,13 +269,12 @@ export default function PricesPage() {
       }))
     )
 
-    // Fetch all in parallel
     const results = await Promise.allSettled(
       productList.map((product) =>
         fetch("/api/market-search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ product, ourPrice: null }),
+          body: JSON.stringify({ product, ourPrice: null, forceRefresh }),
         }).then((r) => r.json())
       )
     )
@@ -318,7 +317,7 @@ export default function PricesPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    await fetchMarketData(products)
+    await fetchMarketData(products, true)
     setIsRefreshing(false)
   }
 
