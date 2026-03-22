@@ -9,8 +9,7 @@ import type { Customer } from "@/lib/rfm"
 import { calculateAtRiskRevenue, getCriticalCount, getAverageDaysSince } from "@/lib/rfm"
 import { Play, Square, Coffee, Dumbbell, Store, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import businessData from "@/lib/data/business.json"
-import catalogData from "@/lib/data/catalog.json"
+import { usePulse } from "./client-layout"
 
 interface DashboardProps {
   customers: Customer[]
@@ -35,6 +34,7 @@ const businessLabels = {
 } as const
 
 export function Dashboard({ customers, businessType, onBusinessTypeChange }: DashboardProps) {
+  const { businessData, catalogData } = usePulse()
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [filter, setFilter] = useState<FilterType>("all")
   const [revenueRecovered, setRevenueRecovered] = useState(0)
@@ -96,7 +96,7 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customers,
-          business: businessData[businessType as keyof typeof businessData],
+          business: businessData[businessType],
           revenueRecovered,
           wonBackCount
         })

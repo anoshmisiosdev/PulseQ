@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import customersData from "@/lib/data/customers.json"
+import { getAllCustomers } from "@/lib/db"
 import { calculateAtRiskRevenue, getCriticalCount, getAverageDaysSince } from "@/lib/rfm"
 import type { Customer } from "@/lib/rfm"
 
@@ -7,9 +7,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const filter = searchParams.get("filter")
 
-  let customers = customersData as unknown as Customer[]
+  const allCustomers = getAllCustomers() as unknown as Customer[]
+  let customers = allCustomers
 
-  // Apply filter if provided
   if (filter && filter !== "all") {
     customers = customers.filter((c) => {
       if (c.confidenceLevel === "low") return false
@@ -21,8 +21,6 @@ export async function GET(request: Request) {
     })
   }
 
-  // Calculate summary stats
-  const allCustomers = customersData as unknown as Customer[]
   const summary = {
     total: allCustomers.length,
     atRiskRevenue: calculateAtRiskRevenue(allCustomers),
@@ -30,8 +28,5 @@ export async function GET(request: Request) {
     avgDaysSince: getAverageDaysSince(allCustomers),
   }
 
-  return NextResponse.json({
-    customers,
-    summary,
-  })
+  return NextResponse.json({ customers, summary })
 }

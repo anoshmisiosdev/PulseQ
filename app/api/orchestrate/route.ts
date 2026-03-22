@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import type { Customer } from "@/lib/rfm"
-import competitorsData from "@/lib/data/competitors.json"
+import { getAllCompetitors, getAllProducts } from "@/lib/db"
 
 interface OrchestrateRequest {
   customer: Customer
@@ -136,7 +136,7 @@ async function runPricingAgent(product: string, ourPrice: number) {
     }
   } catch (e) {
     console.error('Pricing agent failed:', e)
-    const match = (competitorsData as any).products?.[0]
+    const match = getAllCompetitors().products?.[0]
     return {
       product,
       ourPrice,
@@ -230,10 +230,7 @@ export async function POST(request: Request) {
 
     let catalogData = catalog
     if (!catalogData) {
-      try {
-        const catModule = await import('@/lib/data/catalog.json')
-        catalogData = (catModule as any).default?.products || (catModule as any).default || []
-      } catch { catalogData = [] }
+      catalogData = getAllProducts()
     }
 
     const pricingProduct = customer.topItems?.[0] || 'Cold Brew Coffee'

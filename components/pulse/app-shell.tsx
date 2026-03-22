@@ -5,7 +5,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { LayoutDashboard, Users, Target, Activity, Volume2 } from "lucide-react"
-import businessData from "@/lib/data/business.json"
 import { usePulse } from "./client-layout"
 
 const navItems = [
@@ -21,8 +20,8 @@ interface AppShellProps {
 
 export function AppShell({ children, businessType }: AppShellProps) {
   const pathname = usePathname()
-  const biz = businessData[businessType as keyof typeof businessData]
-  const { customers, revenueRecovered, wonBackCount } = usePulse()
+  const { customers, businessData, revenueRecovered, wonBackCount } = usePulse()
+  const biz = businessData[businessType]
   const [isPlaying, setIsPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 

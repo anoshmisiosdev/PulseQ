@@ -9,8 +9,7 @@ import {
 import { cn } from "@/lib/utils"
 import type { Customer } from "@/lib/rfm"
 import { LineChart, Line, ResponsiveContainer, YAxis, Area, AreaChart } from "recharts"
-import businessData from "@/lib/data/business.json"
-import catalogData from "@/lib/data/catalog.json"
+import { usePulse } from "./client-layout"
 import confetti from "canvas-confetti"
 
 interface DetailPanelProps {
@@ -77,8 +76,9 @@ export function DetailPanel({ customer, businessType, onClose, onWonBack }: Deta
   const [offerContent, setOfferContent] = useState({ headline: "", details: "", code: "" })
   const [orchestrateData, setOrchestrateData] = useState<any>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const { businessData, catalogData } = usePulse()
 
-  const business = businessData[businessType as keyof typeof businessData]
+  const business = businessData[businessType]
 
   const generateContent = useCallback(async () => {
     if (!customer) return
@@ -117,7 +117,7 @@ Powered by Pulse`
         body: JSON.stringify({
           customer,
           catalog: (catalogData as any).products || catalogData,
-          business: businessData[businessType as keyof typeof businessData]
+          business: businessData[businessType]
         })
       })
 
