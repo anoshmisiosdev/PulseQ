@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
+import Anthropic from "@anthropic-ai/sdk"
 import type { Customer } from "@/lib/rfm"
 
 interface BriefingRequest {
   customers: Customer[]
-  businessType: "coffee_shop" | "gym" | "boutique"
+  business: any
   revenueRecovered: number
   wonBackCount: number
 }
@@ -11,110 +12,89 @@ interface BriefingRequest {
 export async function POST(request: Request) {
   try {
     const body: BriefingRequest = await request.json()
-    const { customers, revenueRecovered, wonBackCount } = body
+    const { customers, business, revenueRecovered, wonBackCount } = body
 
     if (!customers || !Array.isArray(customers)) {
-      return NextResponse.json({ error: "Missing customers data" }, { status: 400 })
+      return NextResponse.json({ error: 'Missing customers data' }, { status: 400 })
     }
 
-    // Build macro analysis
-    const critical = customers.filter((c) => c.churnScore > 80 && c.confidenceLevel !== "low")
-    const atRisk = customers.filter((c) => c.churnScore >= 50 && c.churnScore < 80 && c.confidenceLevel !== "low")
-    const suddenDrops = customers.filter((c) => c.pattern === "sudden_drop")
-    const gradualFades = customers.filter((c) => c.pattern === "gradual_fade")
-
+    const critical = customers.filter(c => c.churnScore > 80 && c.confidenceLevel !== 'low')
+    const atRisk = customers.filter(c => c.churnScore >= 50 && c.churnScore < 80 && c.confidenceLevel !== 'low')
+    const suddenDrops = customers.filter(c => c.pattern === 'sudden_drop')
+    const gradualFades = customers.filter(c => c.pattern === 'gradual_fade')
+    const groupChurns = customers.filter(c => c.pattern === 'group_churn')
     const atRiskRevenue = critical.reduce((s, c) => s + c.avgTransactionValue * 12, 0)
     const topAtRisk = critical.sort((a, b) => b.churnScore - a.churnScore).slice(0, 3)
 
-    // Generate briefing script (would use Claude in production)
-    const briefingScript = generateBriefingScript({
-      criticalCount: critical.length,
-      atRiskCount: atRisk.length,
-      suddenDropCount: suddenDrops.length,
-      gradualFadeCount: gradualFades.length,
-      atRiskRevenue,
-      revenueRecovered,
-      wonBackCount,
-      topCustomer: topAtRisk[0],
-    })
+    const businessData = business || { name: 'Hayward Coffee Co.', type: 'coffee_shop', voiceId: '21m00Tcm4TlvDq8ikWAM', voiceName: 'Rachel' }
 
-    // In production, this would call ElevenLabs API
-    // For now, return the script text
-    return NextResponse.json({
-      script: briefingScript,
-      stats: {
-        critical: critical.length,
-        atRisk: atRisk.length,
-        suddenDrops: suddenDrops.length,
-        gradualFades: gradualFades.length,
-        atRiskRevenue,
-      },
-    })
+    let script: string
+    try {
+      const client = new Anthropic()
+      const briefingMsg = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 600,
+        messages: [{
+          role: 'user',
+          content: `You are a business intelligence assistant for ${businessData.name}.
+
+Customer data:
+- ${critical.length} critical customers (score > 80)
+- ${atRisk.length} at-risk customers (score 50-79)
+- ${suddenDrops.length} sudden drop patterns
+- ${gradualFades.length} gradual fade patterns
+- ${groupChurns.length} group churn patterns
+- At-risk revenue: $${atRiskRevenue.toFixed(0)}
+- Revenue recovered: $${revenueRecovered || 0}
+- Won back: ${wonBackCount || 0}
+- Top risk: ${topAtRisk[0]?.name || 'N/A'}, ${topAtRisk[0]?.daysSinceVisit || 0} days gone
+${groupChurns.length > 0 ? `\nGROUP CHURN ALERT: ${groupChurns.length} customers stopped around the same date: ${groupChurns.map(c => c.name).join(', ')}` : ''}
+
+Write a 60-90 second spoken business briefing (150-220 words).
+Tone: warm, direct, like a trusted advisor. Voice: ${businessData.voiceName}.
+Structure: 1) What improved 2) Biggest risk (name + numbers) 3) What went wrong 4) One thing to improve 5) Today's one action
+No bullet points. Written to be SPOKEN. Do NOT start with "Hello" or "Good morning".
+Name actual customers. End with one specific action.`
+        }]
+      })
+      script = briefingMsg.content[0].type === 'text' ? briefingMsg.content[0].text : ''
+    } catch (e) {
+      const top = topAtRisk[0]
+      script = `Your biggest risk right now is ${top?.name || 'a critical customer'}. They've been gone ${top?.daysSinceVisit || 'too many'} days. You have ${critical.length} critical customers representing $${atRiskRevenue.toFixed(0)} in at-risk revenue. Today's action: reach out to your highest-risk customer. One call could recover over $${((top?.avgTransactionValue || 8) * 12).toFixed(0)} for the year.`
+    }
+
+    const voiceId = businessData.voiceId || '21m00Tcm4TlvDq8ikWAM'
+
+    try {
+      const audioResponse = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        {
+          method: 'POST',
+          headers: {
+            'xi-api-key': process.env.ELEVENLABS_API_KEY || '',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: script,
+            model_id: 'eleven_turbo_v2',
+            voice_settings: { stability: 0.60, similarity_boost: 0.75, style: 0.30 }
+          })
+        }
+      )
+
+      if (!audioResponse.ok) throw new Error(`ElevenLabs: ${audioResponse.status}`)
+
+      const audioBuffer = await audioResponse.arrayBuffer()
+      return new NextResponse(Buffer.from(audioBuffer), {
+        headers: { 'Content-Type': 'audio/mpeg' }
+      })
+    } catch (e) {
+      console.error('ElevenLabs failed, returning script text:', e)
+      return NextResponse.json({ script, audioFailed: true })
+    }
+
   } catch (error) {
-    console.error("Briefing error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error('Briefing error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
-
-interface BriefingData {
-  criticalCount: number
-  atRiskCount: number
-  suddenDropCount: number
-  gradualFadeCount: number
-  atRiskRevenue: number
-  revenueRecovered: number
-  wonBackCount: number
-  topCustomer?: Customer
-}
-
-function generateBriefingScript(data: BriefingData): string {
-  const {
-    criticalCount,
-    atRiskCount,
-    suddenDropCount,
-    gradualFadeCount,
-    atRiskRevenue,
-    revenueRecovered,
-    wonBackCount,
-    topCustomer,
-  } = data
-
-  let script = ""
-
-  // Positive first
-  if (wonBackCount > 0) {
-    script += `You won back ${wonBackCount} customer${wonBackCount > 1 ? "s" : ""} — that's $${revenueRecovered.toLocaleString()} recovered. Your Revenue Recovered counter is moving. Keep it moving.\n\n`
-  } else {
-    script += `Your Revenue Recovered counter is at zero. That changes today.\n\n`
-  }
-
-  // Biggest risk
-  if (topCustomer) {
-    script += `Right now your biggest risk is ${topCustomer.name}. ${
-      topCustomer.pattern === "gradual_fade"
-        ? `They were one of your most consistent regulars — every two weeks, ${topCustomer.topItems[0] || "their usual"}, for over a year.`
-        : `They stopped coming suddenly — ${topCustomer.daysSinceVisit} days ago with no warning.`
-    } They've been gone ${topCustomer.daysSinceVisit} days. Their spend was ${topCustomer.spendTrend.replace(/_/g, " ")} before they stopped. That's a ${topCustomer.pattern.replace("_", " ")}, which usually means ${
-      topCustomer.pattern === "gradual_fade"
-        ? "a competitor or a life change — not a bad experience. That means they can come back if you reach out."
-        : "something specific happened. Worth investigating what changed that day."
-    }\n\n`
-  }
-
-  // Pattern diagnosis
-  if (suddenDropCount > 1) {
-    script += `${suddenDropCount} customers dropped suddenly in the same period. That date pattern is a signal. Check what changed — a bad batch, a staffing change, something happened. Worth looking into.\n\n`
-  }
-
-  // Actionable suggestion
-  script += `One thing to improve: your new Lavender Matcha Latte launched recently and none of your at-risk customers have seen a recommendation for it yet. That's a missed retention opportunity sitting right there.\n\n`
-
-  // Today's action
-  if (topCustomer) {
-    script += `Today's one action: call ${topCustomer.name.split(" ")[0]}. Not a text, not an email — call them. You've got their script already in Pulse. One call, five minutes. Potentially $${(topCustomer.avgTransactionValue * 12).toLocaleString()} back for the year.`
-  } else {
-    script += `Today's one action: review your ${criticalCount} critical customers and reach out to at least one. Start with the highest risk score.`
-  }
-
-  return script
 }

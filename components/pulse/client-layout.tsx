@@ -26,7 +26,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [revenueRecovered, setRevenueRecovered] = useState(0)
   const [wonBackCount, setWonBackCount] = useState(0)
 
-  const customers = customersData.customers as Customer[]
+  const customers = customersData as unknown as Customer[]
 
   const addWonBack = (customer: Customer) => {
     const recovery = customer.avgTransactionValue * 12

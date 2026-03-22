@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import type { Customer } from "@/lib/rfm"
 import { LineChart, Line, ResponsiveContainer, YAxis, Area, AreaChart } from "recharts"
 import businessData from "@/lib/data/business.json"
+import catalogData from "@/lib/data/catalog.json"
 import confetti from "canvas-confetti"
 
 interface DetailPanelProps {
@@ -70,24 +71,25 @@ export function DetailPanel({ customer, businessType, onClose, onWonBack }: Deta
   const [responded, setResponded] = useState(false)
   const [wonBack, setWonBack] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [emailContent, setEmailContent] = useState("")
   const [phoneScript, setPhoneScript] = useState<string[]>([])
   const [offerContent, setOfferContent] = useState({ headline: "", details: "", code: "" })
+  const [orchestrateData, setOrchestrateData] = useState<any>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   const business = businessData[businessType as keyof typeof businessData]
 
-  const generateContent = useCallback(() => {
+  const generateContent = useCallback(async () => {
     if (!customer) return
     const firstName = customer.name.split(" ")[0]
     const topItem = customer.topItems[0] || "your usual"
 
+    // Set fallback content immediately so UI isn't blank
     setEmailContent(
       `${business.emailOpening.replace("{firstName}", firstName)}
 
 We noticed it's been ${customer.daysSinceVisit} days since your last visit. We miss seeing you — you were always a ${topItem} fan.
-
-We don't know what changed, but we wanted to reach out personally.
 
 Come by this week and your first ${topItem.toLowerCase()} is on us. We'd love to see you again.
 
@@ -95,19 +97,50 @@ ${business.emailSignoff}
 
 Powered by Pulse`
     )
-
     setPhoneScript([
-      `"${firstName}, this is [Your Name] from ${business.name}. We've missed you!"`,
-      `"I noticed it's been a while since your last visit. Is everything okay?"`,
-      `"We'd love to have you back — next ${topItem.toLowerCase()} is on us."`,
+      `Acknowledge: "${firstName}, we've missed you around here."`,
+      `Hook: "We just launched something new — made like your usual ${topItem.toLowerCase()}."`,
+      `CTA: "Come by this week, I'll make your first one on us."`,
     ])
-
     setOfferContent({
-      headline: `Welcome back, ${firstName}!`,
+      headline: `Special offer for ${firstName}`,
       details: `Free ${topItem} + 10% off your next visit. Valid for 7 days.`,
-      code: `WELCOME-${firstName.toUpperCase()}`,
+      code: `WINBACK-${firstName.toUpperCase()}`,
     })
-  }, [customer, business])
+
+    // Call real orchestrate API
+    setIsLoadingContent(true)
+    try {
+      const response = await fetch('/api/orchestrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer,
+          catalog: (catalogData as any).products || catalogData,
+          business: businessData[businessType as keyof typeof businessData]
+        })
+      })
+
+      if (!response.ok) throw new Error(`Orchestrate failed: ${response.status}`)
+
+      const data = await response.json()
+      setOrchestrateData(data)
+
+      if (data.email?.body) setEmailContent(data.email.body)
+      if (data.phoneScript) setPhoneScript(data.phoneScript)
+      if (data.specialOffer) {
+        setOfferContent({
+          headline: data.specialOffer.headline || `Special offer for ${firstName}`,
+          details: data.specialOffer.details || `10% off + free drink`,
+          code: data.specialOffer.code || `WINBACK-${firstName.toUpperCase()}`,
+        })
+      }
+    } catch (e) {
+      console.error('Orchestrate failed, using fallback content:', e)
+    } finally {
+      setIsLoadingContent(false)
+    }
+  }, [customer, business, businessType])
 
   useEffect(() => {
     if (customer) {
@@ -115,13 +148,31 @@ Powered by Pulse`
       setContacted(false)
       setResponded(false)
       setCopied(false)
+      setOrchestrateData(null)
       generateContent()
     }
   }, [customer, generateContent])
 
   const handlePlayVoice = async () => {
     setIsPlaying(true)
-    setTimeout(() => setIsPlaying(false), 5000)
+    try {
+      const textToSpeak = orchestrateData?.email?.body || emailContent
+      const response = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: textToSpeak, businessType })
+      })
+      if (!response.ok) throw new Error(`Voice failed: ${response.status}`)
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      if (audioRef.current) {
+        audioRef.current.src = url
+        audioRef.current.play()
+      }
+    } catch (e) {
+      console.error('Voice playback failed:', e)
+      setIsPlaying(false)
+    }
   }
 
   const handleWonBack = () => {
@@ -292,6 +343,10 @@ Powered by Pulse`
                   <div className="flex items-center gap-2 mb-2">
                     <span className="badge-agent-churn rounded-full" style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 11, padding: "2px 7px" }}>Churn</span>
                     <span className="badge-agent-pricing rounded-full" style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 11, padding: "2px 7px" }}>Synthesis</span>
+                    {isLoadingContent && <span style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "#94a3b8" }}>AI writing...</span>}
+                    {orchestrateData?.email?.tags?.map((tag: string) => (
+                      <span key={tag} className="badge-agent-pricing rounded-full" style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 11, padding: "2px 7px" }}>{tag}</span>
+                    ))}
                   </div>
                   <div
                     className="rounded-xl p-4 whitespace-pre-wrap max-h-52 overflow-y-auto"

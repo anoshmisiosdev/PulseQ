@@ -9,6 +9,8 @@ import type { Customer } from "@/lib/rfm"
 import { calculateAtRiskRevenue, getCriticalCount, getAverageDaysSince } from "@/lib/rfm"
 import { Play, Coffee, Dumbbell, Store, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import businessData from "@/lib/data/business.json"
+import catalogData from "@/lib/data/catalog.json"
 
 interface DashboardProps {
   customers: Customer[]
@@ -42,7 +44,7 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
   const filteredCustomers = useMemo(() => {
     if (filter === "all") return customers
     return customers.filter((c) => {
-      if (c.confidenceLevel === "low") return filter === "all"
+      if (c.confidenceLevel === "low") return false
       if (filter === "critical") return c.churnScore >= 80
       if (filter === "at-risk") return c.churnScore >= 50 && c.churnScore < 80
       if (filter === "watch") return c.churnScore >= 30 && c.churnScore < 50
@@ -80,7 +82,35 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
 
   const handlePlayBriefing = async () => {
     setIsPlayingBriefing(true)
-    setTimeout(() => setIsPlayingBriefing(false), 3000)
+    try {
+      const response = await fetch('/api/briefing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customers,
+          business: businessData[businessType as keyof typeof businessData],
+          revenueRecovered,
+          wonBackCount
+        })
+      })
+
+      const contentType = response.headers.get('content-type')
+
+      if (contentType?.includes('audio')) {
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        audio.onended = () => setIsPlayingBriefing(false)
+        audio.play()
+      } else {
+        const data = await response.json()
+        console.log('Briefing script (no audio):', data.script)
+        setIsPlayingBriefing(false)
+      }
+    } catch (e) {
+      console.error('Briefing failed:', e)
+      setIsPlayingBriefing(false)
+    }
   }
 
   const filterCounts = useMemo(

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const filter = searchParams.get("filter")
 
-  let customers = customersData.customers as Customer[]
+  let customers = customersData as unknown as Customer[]
 
   // Apply filter if provided
   if (filter && filter !== "all") {
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   }
 
   // Calculate summary stats
-  const allCustomers = customersData.customers as Customer[]
+  const allCustomers = customersData as unknown as Customer[]
   const summary = {
     total: allCustomers.length,
     atRiskRevenue: calculateAtRiskRevenue(allCustomers),

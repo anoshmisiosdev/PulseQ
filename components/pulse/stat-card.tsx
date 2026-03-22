@@ -37,7 +37,7 @@ const config = {
 
 function useCountUp(target: number, duration = 1200) {
   const [current, setCurrent] = useState(0)
-  const frameRef = useRef<number>()
+  const frameRef = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     if (target === 0) { setCurrent(0); return }
