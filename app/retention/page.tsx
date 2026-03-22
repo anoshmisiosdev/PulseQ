@@ -29,22 +29,22 @@ function formatDaysAgo(days: number): string {
 }
 
 export default function RetentionPage() {
-  const { customers, businessType, revenueRecovered, wonBackCount, addWonBack } = usePulse()
+  const { customers, businessType, revenueRecovered, wonBackCount, wonBackIds, addWonBack } = usePulse()
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
 
   // Customers sorted by priority (highest risk first), only those needing action
   const actionQueue = useMemo(() => {
     return [...customers]
-      .filter((c) => c.confidenceLevel !== "low" && c.churnScore >= 50)
+      .filter((c) => c.confidenceLevel !== "low" && c.churnScore >= 50 && !wonBackIds.has(c.id))
       .sort((a, b) => b.churnScore - a.churnScore)
-  }, [customers])
+  }, [customers, wonBackIds])
 
   // Customers who are a "watch" — not urgent but worth noting
   const watchList = useMemo(() => {
     return [...customers]
-      .filter((c) => c.confidenceLevel !== "low" && c.churnScore >= 30 && c.churnScore < 50)
+      .filter((c) => c.confidenceLevel !== "low" && c.churnScore >= 30 && c.churnScore < 50 && !wonBackIds.has(c.id))
       .sort((a, b) => b.churnScore - a.churnScore)
-  }, [customers])
+  }, [customers, wonBackIds])
 
   const handleCustomerClick = useCallback((customer: Customer) => {
     setSelectedCustomer(customer)
@@ -278,7 +278,10 @@ export default function RetentionPage() {
         customer={selectedCustomer}
         businessType={businessType}
         onClose={() => setSelectedCustomer(null)}
-        onWonBack={addWonBack}
+        onWonBack={(customer) => {
+          addWonBack(customer)
+          setTimeout(() => setSelectedCustomer(null), 1500)
+        }}
       />
     </div>
   )

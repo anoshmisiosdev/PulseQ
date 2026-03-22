@@ -10,6 +10,7 @@ interface PulseContextType {
   businessType: "coffee_shop" | "gym" | "boutique"
   revenueRecovered: number
   wonBackCount: number
+  wonBackIds: Set<string>
   addWonBack: (customer: Customer) => void
 }
 
@@ -25,6 +26,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [businessType, setBusinessType] = useState<"coffee_shop" | "gym" | "boutique">("coffee_shop")
   const [revenueRecovered, setRevenueRecovered] = useState(0)
   const [wonBackCount, setWonBackCount] = useState(0)
+  const [wonBackIds, setWonBackIds] = useState<Set<string>>(new Set())
 
   const customers = customersData as unknown as Customer[]
 
@@ -32,10 +34,11 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     const recovery = customer.avgTransactionValue * 12
     setRevenueRecovered((prev) => prev + recovery)
     setWonBackCount((prev) => prev + 1)
+    setWonBackIds((prev) => new Set(prev).add(customer.id))
   }
 
   return (
-    <PulseContext.Provider value={{ customers, businessType, revenueRecovered, wonBackCount, addWonBack }}>
+    <PulseContext.Provider value={{ customers, businessType, revenueRecovered, wonBackCount, wonBackIds, addWonBack }}>
       <AppShell
         businessType={businessType}
       >
