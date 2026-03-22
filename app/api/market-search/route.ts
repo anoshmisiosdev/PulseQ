@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getCachedPrice, setCachedPrice } from "@/lib/db"
+import { getCachedPrice, setCachedPrice, getBusinessProfile } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
@@ -12,16 +12,14 @@ export async function POST(request: Request) {
     // Check cache first
     const cached = await getCachedPrice(product)
     if (cached) {
-      const competitors = [cached.amazon, cached.target, cached.walmart].filter((p): p is number => p != null)
+      const competitors = (cached.prices || []).map((p: any) => p.price).filter((p): p is number => p != null)
       const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
       const delta = (ourPrice || 5.00) - lowestPrice
 
       return NextResponse.json({
         product,
         ourPrice,
-        amazon: cached.amazon,
-        target: cached.target,
-        walmart: cached.walmart,
+        prices: cached.prices || [],
         delta: Math.round(delta * 100) / 100,
         citations: cached.citations,
         source: 'cache',
@@ -30,6 +28,9 @@ export async function POST(request: Request) {
     }
 
     // Cache miss — call Perplexity
+    const profile = await getBusinessProfile()
+    const locationStr = profile?.location ? ` in ${profile.location}` : ''
+    
     const pResp = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
         model: 'sonar',
         messages: [{
           role: 'user',
-          content: `Current retail price of "${product}" on Amazon, Target, Walmart. Return ONLY JSON: { "amazon": <number>, "target": <number>, "walmart": <number> }`
+          content: `Identify the 3 most relevant local competitors to a coffee shop${locationStr}. Find the current retail price of a "${product}" at each of these 3 locations. Return ONLY JSON: { "prices": [{ "name": "Competitor Name", "price": <number> }] }`
         }],
         return_citations: true
       })
@@ -52,17 +53,16 @@ export async function POST(request: Request) {
 
     if (!jsonMatch) throw new Error('No JSON in response')
 
-    const prices = JSON.parse(jsonMatch[0])
-    const competitors = [prices.amazon, prices.target, prices.walmart].filter((p: any) => p != null)
+    const parsed = JSON.parse(jsonMatch[0])
+    const pricesArray = parsed.prices || []
+    const competitors = pricesArray.map((p: any) => p.price).filter((p: any) => p != null)
     const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
     const delta = (ourPrice || 5.00) - lowestPrice
 
     // Store in cache
     await setCachedPrice({
       product,
-      amazon: prices.amazon ?? null,
-      target: prices.target ?? null,
-      walmart: prices.walmart ?? null,
+      prices: pricesArray,
       delta: Math.round(delta * 100) / 100,
       citations: pData.citations || [],
     })
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       product,
       ourPrice,
-      ...prices,
+      prices: pricesArray,
       delta: Math.round(delta * 100) / 100,
       citations: pData.citations || [],
       source: 'perplexity_live'
@@ -80,9 +80,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       product: '',
       ourPrice: 5.00,
-      amazon: 4.99,
-      target: 5.20,
-      walmart: 4.85,
+      prices: [{"name": "Fallback Cafe", "price": 4.99}],
       delta: -0.10,
       citations: [],
       source: 'fallback_static',
