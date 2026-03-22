@@ -18,7 +18,15 @@ async function main() {
     await sql`ALTER TABLE competitors DROP COLUMN IF EXISTS target;`
     await sql`ALTER TABLE competitors DROP COLUMN IF EXISTS walmart;`
     await sql`ALTER TABLE competitors ADD COLUMN IF NOT EXISTS prices TEXT NOT NULL DEFAULT '[]';`
-    
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS retained_customers (
+        "customerId" TEXT PRIMARY KEY,
+        "revenueRecovered" NUMERIC NOT NULL DEFAULT 0,
+        "retainedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `
+
     console.log("Migration successful!")
   } catch (err) {
     console.error("Migration failed", err)
