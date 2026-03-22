@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     }
 
     // Check cache first
-    const cached = getCachedPrice(product)
+    const cached = await getCachedPrice(product)
     if (cached) {
       const competitors = [cached.amazon, cached.target, cached.walmart].filter((p): p is number => p != null)
       const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const delta = (ourPrice || 5.00) - lowestPrice
 
     // Store in cache
-    setCachedPrice({
+    await setCachedPrice({
       product,
       amazon: prices.amazon ?? null,
       target: prices.target ?? null,

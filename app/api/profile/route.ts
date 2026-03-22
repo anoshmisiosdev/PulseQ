@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getBusinessProfile, saveBusinessProfile } from "@/lib/db"
 
 export async function GET() {
-  const profile = getBusinessProfile()
+  const profile = await getBusinessProfile()
   return NextResponse.json(profile)
 }
 
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "All fields are required" }, { status: 400 })
   }
 
-  saveBusinessProfile({
+  await saveBusinessProfile({
     location: location.trim(),
     description: description.trim(),
     popularProducts,

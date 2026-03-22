@@ -86,7 +86,7 @@ Return ONLY valid JSON:
 
 async function runPricingAgent(product: string, ourPrice: number) {
   // Check cache first
-  const cached = getCachedPrice(product)
+  const cached = await getCachedPrice(product)
   if (cached) {
     const competitors = [cached.amazon, cached.target, cached.walmart].filter((p): p is number => p != null)
     const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice
@@ -144,7 +144,7 @@ async function runPricingAgent(product: string, ourPrice: number) {
     })
 
     // Cache the result
-    setCachedPrice({
+    await setCachedPrice({
       product,
       amazon: prices.amazon ?? null,
       target: prices.target ?? null,
@@ -166,7 +166,8 @@ async function runPricingAgent(product: string, ourPrice: number) {
     }
   } catch (e) {
     console.error('Pricing agent failed:', e)
-    const match = getAllCompetitors().products?.[0]
+    const allComp = await getAllCompetitors()
+    const match = allComp.products?.[0]
     return {
       product,
       ourPrice,
@@ -260,7 +261,7 @@ export async function POST(request: Request) {
 
     let catalogData = catalog
     if (!catalogData) {
-      catalogData = getAllProducts()
+      catalogData = await getAllProducts()
     }
 
     const pricingProduct = customer.topItems?.[0] || 'Cold Brew Coffee'

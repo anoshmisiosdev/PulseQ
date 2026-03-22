@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const filter = searchParams.get("filter")
 
-  const allCustomers = getAllCustomers() as unknown as Customer[]
+  const allCustomers = (await getAllCustomers()) as unknown as Customer[]
   let customers = allCustomers
 
   if (filter && filter !== "all") {

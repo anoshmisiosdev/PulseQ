@@ -1,201 +1,202 @@
-import Database from "better-sqlite3"
+import postgres from "postgres"
 import path from "path"
 import fs from "fs"
+import { loadEnvConfig } from "@next/env"
 
-const DB_PATH = path.join(process.cwd(), "pulse.db")
+loadEnvConfig(process.cwd())
 
-// Remove existing DB to start fresh
-if (fs.existsSync(DB_PATH)) {
-  fs.unlinkSync(DB_PATH)
-  console.log("Removed existing database")
-}
+async function main() {
+  const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" })
 
-const db = new Database(DB_PATH)
-db.pragma("journal_mode = WAL")
-db.pragma("foreign_keys = ON")
+  // ── Drop existing tables ──────────────────────────────
 
-// ── Create tables ──────────────────────────────────────
+  await sql`DROP TABLE IF EXISTS transactions CASCADE`
+  await sql`DROP TABLE IF EXISTS surveys CASCADE`
+  await sql`DROP TABLE IF EXISTS price_cache CASCADE`
+  await sql`DROP TABLE IF EXISTS business_profiles CASCADE`
+  await sql`DROP TABLE IF EXISTS customers CASCADE`
+  await sql`DROP TABLE IF EXISTS competitors CASCADE`
+  await sql`DROP TABLE IF EXISTS products CASCADE`
+  await sql`DROP TABLE IF EXISTS businesses CASCADE`
 
-db.exec(`
-  CREATE TABLE businesses (
-    type TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    tone TEXT NOT NULL,
-    voiceId TEXT NOT NULL,
-    voiceName TEXT NOT NULL,
-    discountBudget REAL NOT NULL,
-    avgTransactionValue REAL NOT NULL,
-    customerLifetimeValue REAL NOT NULL,
-    emailSignoff TEXT NOT NULL,
-    emailOpening TEXT NOT NULL,
-    productLanguage TEXT NOT NULL
-  );
+  console.log("Dropped existing tables")
 
-  CREATE TABLE products (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    price REAL NOT NULL,
-    category TEXT NOT NULL,
-    launched TEXT NOT NULL,
-    margin REAL NOT NULL
-  );
+  // ── Create tables ──────────────────────────────────────
 
-  CREATE TABLE competitors (
-    name TEXT PRIMARY KEY,
-    ourPrice REAL NOT NULL,
-    amazon REAL NOT NULL,
-    target REAL NOT NULL,
-    walmart REAL NOT NULL,
-    delta REAL NOT NULL
-  );
+  await sql`
+    CREATE TABLE businesses (
+      "type" TEXT PRIMARY KEY,
+      "name" TEXT NOT NULL,
+      "tone" TEXT NOT NULL,
+      "voiceId" TEXT NOT NULL,
+      "voiceName" TEXT NOT NULL,
+      "discountBudget" REAL NOT NULL,
+      "avgTransactionValue" REAL NOT NULL,
+      "customerLifetimeValue" REAL NOT NULL,
+      "emailSignoff" TEXT NOT NULL,
+      "emailOpening" TEXT NOT NULL,
+      "productLanguage" TEXT NOT NULL
+    )
+  `
 
-  CREATE TABLE customers (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    lastVisit TEXT NOT NULL,
-    daysSinceVisit INTEGER NOT NULL,
-    topItems TEXT NOT NULL,
-    churnScore INTEGER NOT NULL,
-    confidenceLevel TEXT NOT NULL,
-    pattern TEXT NOT NULL,
-    spendTrend TEXT NOT NULL,
-    avgTransactionValue REAL NOT NULL
-  );
+  await sql`
+    CREATE TABLE products (
+      "id" TEXT PRIMARY KEY,
+      "name" TEXT NOT NULL,
+      "price" REAL NOT NULL,
+      "category" TEXT NOT NULL,
+      "launched" TEXT NOT NULL,
+      "margin" REAL NOT NULL
+    )
+  `
 
-  CREATE TABLE transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customerId TEXT NOT NULL,
-    date TEXT NOT NULL,
-    amount REAL NOT NULL,
-    FOREIGN KEY (customerId) REFERENCES customers(id)
-  );
+  await sql`
+    CREATE TABLE competitors (
+      "name" TEXT PRIMARY KEY,
+      "ourPrice" REAL NOT NULL,
+      "amazon" REAL NOT NULL,
+      "target" REAL NOT NULL,
+      "walmart" REAL NOT NULL,
+      "delta" REAL NOT NULL
+    )
+  `
 
-  CREATE TABLE surveys (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customerId TEXT NOT NULL,
-    date TEXT NOT NULL,
-    satisfaction INTEGER NOT NULL,
-    wouldRecommend INTEGER NOT NULL,
-    comments TEXT NOT NULL,
-    surveyInfluence REAL NOT NULL
-  );
+  await sql`
+    CREATE TABLE customers (
+      "id" TEXT PRIMARY KEY,
+      "name" TEXT NOT NULL,
+      "email" TEXT NOT NULL,
+      "lastVisit" TEXT NOT NULL,
+      "daysSinceVisit" INTEGER NOT NULL,
+      "topItems" TEXT NOT NULL,
+      "churnScore" INTEGER NOT NULL,
+      "confidenceLevel" TEXT NOT NULL,
+      "pattern" TEXT NOT NULL,
+      "spendTrend" TEXT NOT NULL,
+      "avgTransactionValue" REAL NOT NULL
+    )
+  `
 
-  CREATE TABLE business_profiles (
-    id TEXT PRIMARY KEY DEFAULT 'default',
-    location TEXT NOT NULL DEFAULT '',
-    description TEXT NOT NULL DEFAULT '',
-    popularProducts TEXT NOT NULL DEFAULT '[]'
-  );
+  await sql`
+    CREATE TABLE transactions (
+      "id" SERIAL PRIMARY KEY,
+      "customerId" TEXT NOT NULL REFERENCES customers("id"),
+      "date" TEXT NOT NULL,
+      "amount" REAL NOT NULL
+    )
+  `
 
-  INSERT INTO business_profiles (id) VALUES ('default');
+  await sql`
+    CREATE TABLE surveys (
+      "id" SERIAL PRIMARY KEY,
+      "customerId" TEXT NOT NULL,
+      "date" TEXT NOT NULL,
+      "satisfaction" INTEGER NOT NULL,
+      "wouldRecommend" INTEGER NOT NULL,
+      "comments" TEXT NOT NULL,
+      "surveyInfluence" REAL NOT NULL
+    )
+  `
 
-  CREATE TABLE price_cache (
-    product TEXT PRIMARY KEY,
-    amazon REAL,
-    target REAL,
-    walmart REAL,
-    delta REAL,
-    citations TEXT NOT NULL DEFAULT '[]',
-    fetchedAt TEXT NOT NULL
-  );
-`)
+  await sql`
+    CREATE TABLE business_profiles (
+      "id" TEXT PRIMARY KEY DEFAULT 'default',
+      "location" TEXT NOT NULL DEFAULT '',
+      "description" TEXT NOT NULL DEFAULT '',
+      "popularProducts" TEXT NOT NULL DEFAULT '[]'
+    )
+  `
 
-console.log("Tables created")
+  await sql`INSERT INTO business_profiles ("id") VALUES ('default')`
 
-// ── Seed businesses ────────────────────────────────────
+  await sql`
+    CREATE TABLE price_cache (
+      "product" TEXT PRIMARY KEY,
+      "amazon" REAL,
+      "target" REAL,
+      "walmart" REAL,
+      "delta" REAL,
+      "citations" TEXT NOT NULL DEFAULT '[]',
+      "fetchedAt" TEXT NOT NULL
+    )
+  `
 
-const businessData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/business.json"), "utf-8"))
-const insertBusiness = db.prepare(`
-  INSERT INTO businesses (type, name, tone, voiceId, voiceName, discountBudget, avgTransactionValue, customerLifetimeValue, emailSignoff, emailOpening, productLanguage)
-  VALUES (@type, @name, @tone, @voiceId, @voiceName, @discountBudget, @avgTransactionValue, @customerLifetimeValue, @emailSignoff, @emailOpening, @productLanguage)
-`)
+  console.log("Tables created")
 
-for (const [type, biz] of Object.entries(businessData)) {
-  const b = biz as any
-  insertBusiness.run({ type, ...b })
-}
-console.log(`Seeded ${Object.keys(businessData).length} businesses`)
+  // ── Seed businesses ────────────────────────────────────
 
-// ── Seed products ──────────────────────────────────────
+  const businessData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/business.json"), "utf-8"))
 
-const catalogData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/catalog.json"), "utf-8"))
-const insertProduct = db.prepare(`
-  INSERT INTO products (id, name, price, category, launched, margin)
-  VALUES (@id, @name, @price, @category, @launched, @margin)
-`)
-
-for (const p of catalogData) {
-  insertProduct.run(p)
-}
-console.log(`Seeded ${catalogData.length} products`)
-
-// ── Seed competitors ───────────────────────────────────
-
-const competitorsData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/competitors.json"), "utf-8"))
-const insertCompetitor = db.prepare(`
-  INSERT INTO competitors (name, ourPrice, amazon, target, walmart, delta)
-  VALUES (@name, @ourPrice, @amazon, @target, @walmart, @delta)
-`)
-
-for (const c of competitorsData.products) {
-  insertCompetitor.run(c)
-}
-console.log(`Seeded ${competitorsData.products.length} competitors`)
-
-// ── Seed customers + transactions ──────────────────────
-
-const customersData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/customers.json"), "utf-8"))
-const insertCustomer = db.prepare(`
-  INSERT INTO customers (id, name, email, lastVisit, daysSinceVisit, topItems, churnScore, confidenceLevel, pattern, spendTrend, avgTransactionValue)
-  VALUES (@id, @name, @email, @lastVisit, @daysSinceVisit, @topItems, @churnScore, @confidenceLevel, @pattern, @spendTrend, @avgTransactionValue)
-`)
-const insertTransaction = db.prepare(`
-  INSERT INTO transactions (customerId, date, amount)
-  VALUES (@customerId, @date, @amount)
-`)
-
-let txCount = 0
-for (const c of customersData) {
-  insertCustomer.run({
-    id: c.id,
-    name: c.name,
-    email: c.email,
-    lastVisit: c.lastVisit,
-    daysSinceVisit: c.daysSinceVisit,
-    topItems: JSON.stringify(c.topItems),
-    churnScore: c.churnScore,
-    confidenceLevel: c.confidenceLevel,
-    pattern: c.pattern,
-    spendTrend: c.spendTrend,
-    avgTransactionValue: c.avgTransactionValue,
-  })
-  for (const tx of c.transactions) {
-    insertTransaction.run({ customerId: c.id, date: tx.date, amount: tx.amount })
-    txCount++
+  for (const [type, biz] of Object.entries(businessData)) {
+    const b = biz as any
+    await sql`
+      INSERT INTO businesses ("type", "name", "tone", "voiceId", "voiceName", "discountBudget", "avgTransactionValue", "customerLifetimeValue", "emailSignoff", "emailOpening", "productLanguage")
+      VALUES (${type}, ${b.name}, ${b.tone}, ${b.voiceId}, ${b.voiceName}, ${b.discountBudget}, ${b.avgTransactionValue}, ${b.customerLifetimeValue}, ${b.emailSignoff}, ${b.emailOpening}, ${b.productLanguage})
+    `
   }
+  console.log(`Seeded ${Object.keys(businessData).length} businesses`)
+
+  // ── Seed products ──────────────────────────────────────
+
+  const catalogData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/catalog.json"), "utf-8"))
+
+  for (const p of catalogData) {
+    await sql`
+      INSERT INTO products ("id", "name", "price", "category", "launched", "margin")
+      VALUES (${p.id}, ${p.name}, ${p.price}, ${p.category}, ${p.launched}, ${p.margin})
+    `
+  }
+  console.log(`Seeded ${catalogData.length} products`)
+
+  // ── Seed competitors ───────────────────────────────────
+
+  const competitorsData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/competitors.json"), "utf-8"))
+
+  for (const c of competitorsData.products) {
+    await sql`
+      INSERT INTO competitors ("name", "ourPrice", "amazon", "target", "walmart", "delta")
+      VALUES (${c.name}, ${c.ourPrice}, ${c.amazon}, ${c.target}, ${c.walmart}, ${c.delta})
+    `
+  }
+  console.log(`Seeded ${competitorsData.products.length} competitors`)
+
+  // ── Seed customers + transactions ──────────────────────
+
+  const customersData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/customers.json"), "utf-8"))
+
+  let txCount = 0
+  for (const c of customersData) {
+    await sql`
+      INSERT INTO customers ("id", "name", "email", "lastVisit", "daysSinceVisit", "topItems", "churnScore", "confidenceLevel", "pattern", "spendTrend", "avgTransactionValue")
+      VALUES (${c.id}, ${c.name}, ${c.email}, ${c.lastVisit}, ${c.daysSinceVisit}, ${JSON.stringify(c.topItems)}, ${c.churnScore}, ${c.confidenceLevel}, ${c.pattern}, ${c.spendTrend}, ${c.avgTransactionValue})
+    `
+    for (const tx of c.transactions) {
+      await sql`
+        INSERT INTO transactions ("customerId", "date", "amount")
+        VALUES (${c.id}, ${tx.date}, ${tx.amount})
+      `
+      txCount++
+    }
+  }
+  console.log(`Seeded ${customersData.length} customers, ${txCount} transactions`)
+
+  // ── Seed surveys ───────────────────────────────────────
+
+  const surveysData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/surveys.json"), "utf-8"))
+
+  for (const s of surveysData.responses) {
+    await sql`
+      INSERT INTO surveys ("customerId", "date", "satisfaction", "wouldRecommend", "comments", "surveyInfluence")
+      VALUES (${s.customerId}, ${s.date}, ${s.satisfaction}, ${s.wouldRecommend ? 1 : 0}, ${s.comments}, ${s.surveyInfluence})
+    `
+  }
+  console.log(`Seeded ${surveysData.responses.length} surveys`)
+
+  await sql.end()
+  console.log("\nDatabase seeded successfully on Supabase!")
 }
-console.log(`Seeded ${customersData.length} customers, ${txCount} transactions`)
 
-// ── Seed surveys ───────────────────────────────────────
-
-const surveysData = JSON.parse(fs.readFileSync(path.join(process.cwd(), "lib/data/surveys.json"), "utf-8"))
-const insertSurvey = db.prepare(`
-  INSERT INTO surveys (customerId, date, satisfaction, wouldRecommend, comments, surveyInfluence)
-  VALUES (@customerId, @date, @satisfaction, @wouldRecommend, @comments, @surveyInfluence)
-`)
-
-for (const s of surveysData.responses) {
-  insertSurvey.run({
-    customerId: s.customerId,
-    date: s.date,
-    satisfaction: s.satisfaction,
-    wouldRecommend: s.wouldRecommend ? 1 : 0,
-    comments: s.comments,
-    surveyInfluence: s.surveyInfluence,
-  })
-}
-console.log(`Seeded ${surveysData.responses.length} surveys`)
-
-db.close()
-console.log("\nDatabase seeded successfully at:", DB_PATH)
+main().catch((err) => {
+  console.error("Seed failed:", err)
+  process.exit(1)
+})

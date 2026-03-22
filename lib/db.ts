@@ -1,18 +1,9 @@
-import Database from "better-sqlite3"
-import path from "path"
+import { createClient } from "@supabase/supabase-js"
 
-const DB_PATH = path.join(process.cwd(), "pulse.db")
-
-let _db: Database.Database | null = null
-
-function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(DB_PATH)
-    _db.pragma("journal_mode = WAL")
-    _db.pragma("foreign_keys = ON")
-  }
-  return _db
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 // ── Types ──────────────────────────────────────────────
 
@@ -80,51 +71,57 @@ export interface SurveyRow {
 
 // ── Queries ────────────────────────────────────────────
 
-export function getAllBusinesses(): Record<string, BusinessRow> {
-  const db = getDb()
-  const rows = db.prepare("SELECT * FROM businesses").all() as BusinessRow[]
+export async function getAllBusinesses(): Promise<Record<string, BusinessRow>> {
+  const { data, error } = await supabase.from("businesses").select("*")
+  if (error) throw error
   const result: Record<string, BusinessRow> = {}
-  for (const row of rows) {
-    result[row.type] = row
+  for (const row of data || []) {
+    result[row.type] = row as BusinessRow
   }
   return result
 }
 
-export function getBusiness(type: string): BusinessRow | undefined {
-  const db = getDb()
-  return db.prepare("SELECT * FROM businesses WHERE type = ?").get(type) as BusinessRow | undefined
+export async function getBusiness(type: string): Promise<BusinessRow | undefined> {
+  const { data, error } = await supabase.from("businesses").select("*").eq("type", type).single()
+  if (error) return undefined
+  return data as BusinessRow
 }
 
-export function getAllProducts(): ProductRow[] {
-  const db = getDb()
-  return db.prepare("SELECT * FROM products").all() as ProductRow[]
+export async function getAllProducts(): Promise<ProductRow[]> {
+  const { data, error } = await supabase.from("products").select("*")
+  if (error) throw error
+  return (data || []) as ProductRow[]
 }
 
-export function getAllCompetitors(): { products: CompetitorRow[] } {
-  const db = getDb()
-  const rows = db.prepare("SELECT * FROM competitors").all() as CompetitorRow[]
-  return { products: rows }
+export async function getAllCompetitors(): Promise<{ products: CompetitorRow[] }> {
+  const { data, error } = await supabase.from("competitors").select("*")
+  if (error) throw error
+  return { products: (data || []) as CompetitorRow[] }
 }
 
-export function getAllCustomers() {
-  const db = getDb()
-  const customers = db.prepare("SELECT * FROM customers").all() as CustomerRow[]
-  const transactions = db.prepare("SELECT * FROM transactions ORDER BY date").all() as TransactionRow[]
+export async function getAllCustomers() {
+  const { data: customers, error: cErr } = await supabase.from("customers").select("*")
+  if (cErr) throw cErr
+  const { data: transactions, error: tErr } = await supabase
+    .from("transactions")
+    .select("*")
+    .order("date")
+  if (tErr) throw tErr
 
   const txMap = new Map<string, { date: string; amount: number }[]>()
-  for (const tx of transactions) {
+  for (const tx of transactions || []) {
     if (!txMap.has(tx.customerId)) txMap.set(tx.customerId, [])
     txMap.get(tx.customerId)!.push({ date: tx.date, amount: tx.amount })
   }
 
-  return customers.map((c) => ({
+  return (customers || []).map((c: any) => ({
     id: c.id,
     name: c.name,
     email: c.email,
     lastVisit: c.lastVisit,
     daysSinceVisit: c.daysSinceVisit,
     transactions: txMap.get(c.id) || [],
-    topItems: JSON.parse(c.topItems),
+    topItems: typeof c.topItems === "string" ? JSON.parse(c.topItems) : c.topItems,
     churnScore: c.churnScore,
     confidenceLevel: c.confidenceLevel,
     pattern: c.pattern,
@@ -141,22 +138,30 @@ export interface BusinessProfileRow {
   popularProducts: string[]
 }
 
-export function getBusinessProfile(): BusinessProfileRow {
-  const db = getDb()
-  const row = db.prepare("SELECT * FROM business_profiles WHERE id = 'default'").get() as any
-  if (!row) return { location: "", description: "", popularProducts: [] }
+export async function getBusinessProfile(): Promise<BusinessProfileRow> {
+  const { data, error } = await supabase
+    .from("business_profiles")
+    .select("*")
+    .eq("id", "default")
+    .single()
+  if (error || !data) return { location: "", description: "", popularProducts: [] }
   return {
-    location: row.location,
-    description: row.description,
-    popularProducts: JSON.parse(row.popularProducts),
+    location: data.location,
+    description: data.description,
+    popularProducts: typeof data.popularProducts === "string"
+      ? JSON.parse(data.popularProducts)
+      : data.popularProducts,
   }
 }
 
-export function saveBusinessProfile(profile: BusinessProfileRow): void {
-  const db = getDb()
-  db.prepare(
-    "INSERT OR REPLACE INTO business_profiles (id, location, description, popularProducts) VALUES ('default', ?, ?, ?)"
-  ).run(profile.location, profile.description, JSON.stringify(profile.popularProducts))
+export async function saveBusinessProfile(profile: BusinessProfileRow): Promise<void> {
+  const { error } = await supabase.from("business_profiles").upsert({
+    id: "default",
+    location: profile.location,
+    description: profile.description,
+    popularProducts: JSON.stringify(profile.popularProducts),
+  })
+  if (error) throw error
 }
 
 // ── Price Cache ────────────────────────────────────────
@@ -173,47 +178,48 @@ export interface PriceCacheRow {
   fetchedAt: string
 }
 
-export function getCachedPrice(product: string): PriceCacheRow | null {
-  const db = getDb()
-  const row = db.prepare("SELECT * FROM price_cache WHERE product = ?").get(product) as any
-  if (!row) return null
+export async function getCachedPrice(product: string): Promise<PriceCacheRow | null> {
+  const { data, error } = await supabase
+    .from("price_cache")
+    .select("*")
+    .eq("product", product)
+    .single()
+  if (error || !data) return null
 
-  const fetchedAt = new Date(row.fetchedAt).getTime()
+  const fetchedAt = new Date(data.fetchedAt).getTime()
   if (Date.now() - fetchedAt > CACHE_TTL_MS) return null
 
   return {
-    product: row.product,
-    amazon: row.amazon,
-    target: row.target,
-    walmart: row.walmart,
-    delta: row.delta,
-    citations: JSON.parse(row.citations),
-    fetchedAt: row.fetchedAt,
+    product: data.product,
+    amazon: data.amazon,
+    target: data.target,
+    walmart: data.walmart,
+    delta: data.delta,
+    citations: typeof data.citations === "string" ? JSON.parse(data.citations) : data.citations,
+    fetchedAt: data.fetchedAt,
   }
 }
 
-export function setCachedPrice(data: Omit<PriceCacheRow, "fetchedAt">): void {
-  const db = getDb()
-  db.prepare(
-    "INSERT OR REPLACE INTO price_cache (product, amazon, target, walmart, delta, citations, fetchedAt) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(
-    data.product,
-    data.amazon,
-    data.target,
-    data.walmart,
-    data.delta,
-    JSON.stringify(data.citations),
-    new Date().toISOString()
-  )
+export async function setCachedPrice(input: Omit<PriceCacheRow, "fetchedAt">): Promise<void> {
+  const { error } = await supabase.from("price_cache").upsert({
+    product: input.product,
+    amazon: input.amazon,
+    target: input.target,
+    walmart: input.walmart,
+    delta: input.delta,
+    citations: JSON.stringify(input.citations),
+    fetchedAt: new Date().toISOString(),
+  })
+  if (error) throw error
 }
 
-export function getAllSurveys(): { responses: SurveyRow[] } {
-  const db = getDb()
-  const rows = db.prepare("SELECT * FROM surveys").all() as (Omit<SurveyRow, "wouldRecommend"> & { wouldRecommend: number })[]
+export async function getAllSurveys(): Promise<{ responses: SurveyRow[] }> {
+  const { data, error } = await supabase.from("surveys").select("*")
+  if (error) throw error
   return {
-    responses: rows.map((r) => ({
+    responses: (data || []).map((r: any) => ({
       ...r,
-      wouldRecommend: r.wouldRecommend === 1,
-    })) as any,
+      wouldRecommend: r.wouldRecommend === 1 || r.wouldRecommend === true,
+    })),
   }
 }
