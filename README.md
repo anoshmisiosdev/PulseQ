@@ -1,6 +1,6 @@
 # PulseQ
 
-AI-powered customer retention dashboard. Identifies churn risk, generates win-back outreach, and delivers daily audio  briefings.
+AI-powered customer retention dashboard. Identifies churn risk, generates win-back outreach, and delivers daily audio briefings.
 
 ## Stack
 
