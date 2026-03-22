@@ -234,6 +234,47 @@ function ProductCard({ data, yourPrice, onPriceChange }: {
   )
 }
 
+const CACHE_KEY = "pulse_market_prices"
+const CACHE_TTL = 2 * 60 * 60 * 1000 // 2 hours
+
+interface CachedMarket {
+  data: MarketData[]
+  fetchedAt: number
+}
+
+function readCache(productList: string[]): MarketData[] | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const cached: CachedMarket = JSON.parse(raw)
+    if (Date.now() - cached.fetchedAt > CACHE_TTL) return null
+    // Ensure cached products match current product list
+    const cachedProducts = cached.data.map((d) => d.product).sort()
+    if (JSON.stringify(cachedProducts) !== JSON.stringify([...productList].sort())) return null
+    return cached.data
+  } catch {
+    return null
+  }
+}
+
+function writeCache(data: MarketData[]) {
+  try {
+    const entry: CachedMarket = { data, fetchedAt: Date.now() }
+    localStorage.setItem(CACHE_KEY, JSON.stringify(entry))
+  } catch {}
+}
+
+function getCacheAge(): number | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const cached: CachedMarket = JSON.parse(raw)
+    return Date.now() - cached.fetchedAt
+  } catch {
+    return null
+  }
+}
+
 export default function PricesPage() {
   const [products, setProducts] = useState<string[]>([])
   const [marketData, setMarketData] = useState<MarketData[]>([])
@@ -254,6 +295,15 @@ export default function PricesPage() {
 
   const fetchMarketData = useCallback(async (productList: string[], forceRefresh: boolean = false) => {
     if (productList.length === 0) return
+
+    // Try localStorage cache first (skip on force refresh)
+    if (!forceRefresh) {
+      const cached = readCache(productList)
+      if (cached) {
+        setMarketData(cached)
+        return
+      }
+    }
 
     // Initialise loading states
     setMarketData(
@@ -279,41 +329,56 @@ export default function PricesPage() {
       )
     )
 
-    setMarketData(
-      productList.map((product, i) => {
-        const result = results[i]
-        if (result.status === "fulfilled") {
-          const d = result.value
-          return {
-            product,
-            ourPrice: d.ourPrice,
-            prices: d.prices || [],
-            delta: d.delta ?? null,
-            citations: d.citations || [],
-            source: d.source || "fallback_static",
-            loading: false,
-            error: false,
-          }
-        }
+    const fresh = productList.map((product, i) => {
+      const result = results[i]
+      if (result.status === "fulfilled") {
+        const d = result.value
         return {
           product,
-          ourPrice: null,
-          prices: [],
-          delta: null,
-          citations: [],
-          source: "fallback_static",
+          ourPrice: d.ourPrice,
+          prices: d.prices || [],
+          delta: d.delta ?? null,
+          citations: d.citations || [],
+          source: d.source || "fallback_static",
           loading: false,
-          error: true,
-        }
-      })
-    )
+          error: false,
+        } as MarketData
+      }
+      return {
+        product,
+        ourPrice: null,
+        prices: [],
+        delta: null,
+        citations: [],
+        source: "fallback_static",
+        loading: false,
+        error: true,
+      } as MarketData
+    })
+
+    setMarketData(fresh)
+    writeCache(fresh)
   }, [])
 
+  // Initial fetch (uses cache if fresh)
   useEffect(() => {
     if (products.length > 0) {
       fetchMarketData(products)
     }
   }, [products, fetchMarketData])
+
+  // Auto-reload when cache expires
+  useEffect(() => {
+    if (products.length === 0) return
+    const age = getCacheAge()
+    if (age == null) return
+    const remaining = CACHE_TTL - age
+    if (remaining <= 0) return // already stale, initial fetch will handle it
+    const timer = setTimeout(() => {
+      fetchMarketData(products, true)
+    }, remaining)
+    return () => clearTimeout(timer)
+  }, [products, marketData, fetchMarketData])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
