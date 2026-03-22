@@ -234,46 +234,7 @@ function ProductCard({ data, yourPrice, onPriceChange }: {
   )
 }
 
-const CACHE_KEY = "pulse_market_prices"
 const CACHE_TTL = 2 * 60 * 60 * 1000 // 2 hours
-
-interface CachedMarket {
-  data: MarketData[]
-  fetchedAt: number
-}
-
-function readCache(productList: string[]): MarketData[] | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) return null
-    const cached: CachedMarket = JSON.parse(raw)
-    if (Date.now() - cached.fetchedAt > CACHE_TTL) return null
-    // Ensure cached products match current product list
-    const cachedProducts = cached.data.map((d) => d.product).sort()
-    if (JSON.stringify(cachedProducts) !== JSON.stringify([...productList].sort())) return null
-    return cached.data
-  } catch {
-    return null
-  }
-}
-
-function writeCache(data: MarketData[]) {
-  try {
-    const entry: CachedMarket = { data, fetchedAt: Date.now() }
-    localStorage.setItem(CACHE_KEY, JSON.stringify(entry))
-  } catch {}
-}
-
-function getCacheAge(): number | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) return null
-    const cached: CachedMarket = JSON.parse(raw)
-    return Date.now() - cached.fetchedAt
-  } catch {
-    return null
-  }
-}
 
 export default function PricesPage() {
   const [products, setProducts] = useState<string[]>([])
@@ -295,15 +256,6 @@ export default function PricesPage() {
 
   const fetchMarketData = useCallback(async (productList: string[], forceRefresh: boolean = false) => {
     if (productList.length === 0) return
-
-    // Try localStorage cache first (skip on force refresh)
-    if (!forceRefresh) {
-      const cached = readCache(productList)
-      if (cached) {
-        setMarketData(cached)
-        return
-      }
-    }
 
     // Initialise loading states
     setMarketData(
@@ -357,28 +309,23 @@ export default function PricesPage() {
     })
 
     setMarketData(fresh)
-    writeCache(fresh)
   }, [])
 
-  // Initial fetch (uses cache if fresh)
+  // Initial fetch (DB cache handles staleness)
   useEffect(() => {
     if (products.length > 0) {
       fetchMarketData(products)
     }
   }, [products, fetchMarketData])
 
-  // Auto-reload when cache expires
+  // Auto-reload every 2 hours while page is open
   useEffect(() => {
     if (products.length === 0) return
-    const age = getCacheAge()
-    if (age == null) return
-    const remaining = CACHE_TTL - age
-    if (remaining <= 0) return // already stale, initial fetch will handle it
-    const timer = setTimeout(() => {
+    const timer = setInterval(() => {
       fetchMarketData(products, true)
-    }, remaining)
-    return () => clearTimeout(timer)
-  }, [products, marketData, fetchMarketData])
+    }, CACHE_TTL)
+    return () => clearInterval(timer)
+  }, [products, fetchMarketData])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
