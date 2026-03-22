@@ -1,17 +1,11 @@
-import Database from "better-sqlite3"
 import path from "path"
+import fs from "fs"
 
-const DB_PATH = path.join(process.cwd(), "pulse.db")
+const DATA_DIR = path.join(process.cwd(), "lib", "data")
 
-let _db: Database.Database | null = null
-
-function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(DB_PATH)
-    _db.pragma("journal_mode = WAL")
-    _db.pragma("foreign_keys = ON")
-  }
-  return _db
+function readJSON<T>(filename: string): T {
+  const filePath = path.join(DATA_DIR, filename)
+  return JSON.parse(fs.readFileSync(filePath, "utf-8"))
 }
 
 // ── Types ──────────────────────────────────────────────
@@ -54,7 +48,8 @@ export interface CustomerRow {
   email: string
   lastVisit: string
   daysSinceVisit: number
-  topItems: string
+  topItems: string[]
+  transactions: { date: string; amount: number }[]
   churnScore: number
   confidenceLevel: string
   pattern: string
@@ -62,69 +57,50 @@ export interface CustomerRow {
   avgTransactionValue: number
 }
 
-export interface TransactionRow {
-  id: number
-  customerId: string
-  date: string
-  amount: number
-}
-
 export interface SurveyRow {
   customerId: string
   date: string
   satisfaction: number
-  wouldRecommend: number
+  wouldRecommend: boolean
   comments: string
   surveyInfluence: number
 }
 
+// ── In-memory caches (ephemeral per serverless invocation) ──
+
+let _businessProfile: BusinessProfileRow = { location: "", description: "", popularProducts: [] }
+
+const _priceCache = new Map<string, PriceCacheRow>()
+
 // ── Queries ────────────────────────────────────────────
 
 export function getAllBusinesses(): Record<string, BusinessRow> {
-  const db = getDb()
-  const rows = db.prepare("SELECT * FROM businesses").all() as BusinessRow[]
-  const result: Record<string, BusinessRow> = {}
-  for (const row of rows) {
-    result[row.type] = row
-  }
-  return result
+  return readJSON<Record<string, BusinessRow>>("business.json")
 }
 
 export function getBusiness(type: string): BusinessRow | undefined {
-  const db = getDb()
-  return db.prepare("SELECT * FROM businesses WHERE type = ?").get(type) as BusinessRow | undefined
+  const businesses = getAllBusinesses()
+  return businesses[type]
 }
 
 export function getAllProducts(): ProductRow[] {
-  const db = getDb()
-  return db.prepare("SELECT * FROM products").all() as ProductRow[]
+  return readJSON<ProductRow[]>("catalog.json")
 }
 
 export function getAllCompetitors(): { products: CompetitorRow[] } {
-  const db = getDb()
-  const rows = db.prepare("SELECT * FROM competitors").all() as CompetitorRow[]
-  return { products: rows }
+  return readJSON<{ products: CompetitorRow[] }>("competitors.json")
 }
 
 export function getAllCustomers() {
-  const db = getDb()
-  const customers = db.prepare("SELECT * FROM customers").all() as CustomerRow[]
-  const transactions = db.prepare("SELECT * FROM transactions ORDER BY date").all() as TransactionRow[]
-
-  const txMap = new Map<string, { date: string; amount: number }[]>()
-  for (const tx of transactions) {
-    if (!txMap.has(tx.customerId)) txMap.set(tx.customerId, [])
-    txMap.get(tx.customerId)!.push({ date: tx.date, amount: tx.amount })
-  }
-
+  const customers = readJSON<CustomerRow[]>("customers.json")
   return customers.map((c) => ({
     id: c.id,
     name: c.name,
     email: c.email,
     lastVisit: c.lastVisit,
     daysSinceVisit: c.daysSinceVisit,
-    transactions: txMap.get(c.id) || [],
-    topItems: JSON.parse(c.topItems),
+    transactions: c.transactions || [],
+    topItems: c.topItems,
     churnScore: c.churnScore,
     confidenceLevel: c.confidenceLevel,
     pattern: c.pattern,
@@ -142,21 +118,11 @@ export interface BusinessProfileRow {
 }
 
 export function getBusinessProfile(): BusinessProfileRow {
-  const db = getDb()
-  const row = db.prepare("SELECT * FROM business_profiles WHERE id = 'default'").get() as any
-  if (!row) return { location: "", description: "", popularProducts: [] }
-  return {
-    location: row.location,
-    description: row.description,
-    popularProducts: JSON.parse(row.popularProducts),
-  }
+  return _businessProfile
 }
 
 export function saveBusinessProfile(profile: BusinessProfileRow): void {
-  const db = getDb()
-  db.prepare(
-    "INSERT OR REPLACE INTO business_profiles (id, location, description, popularProducts) VALUES ('default', ?, ?, ?)"
-  ).run(profile.location, profile.description, JSON.stringify(profile.popularProducts))
+  _businessProfile = profile
 }
 
 // ── Price Cache ────────────────────────────────────────
@@ -174,46 +140,25 @@ export interface PriceCacheRow {
 }
 
 export function getCachedPrice(product: string): PriceCacheRow | null {
-  const db = getDb()
-  const row = db.prepare("SELECT * FROM price_cache WHERE product = ?").get(product) as any
+  const row = _priceCache.get(product)
   if (!row) return null
 
   const fetchedAt = new Date(row.fetchedAt).getTime()
-  if (Date.now() - fetchedAt > CACHE_TTL_MS) return null
-
-  return {
-    product: row.product,
-    amazon: row.amazon,
-    target: row.target,
-    walmart: row.walmart,
-    delta: row.delta,
-    citations: JSON.parse(row.citations),
-    fetchedAt: row.fetchedAt,
+  if (Date.now() - fetchedAt > CACHE_TTL_MS) {
+    _priceCache.delete(product)
+    return null
   }
+
+  return row
 }
 
 export function setCachedPrice(data: Omit<PriceCacheRow, "fetchedAt">): void {
-  const db = getDb()
-  db.prepare(
-    "INSERT OR REPLACE INTO price_cache (product, amazon, target, walmart, delta, citations, fetchedAt) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(
-    data.product,
-    data.amazon,
-    data.target,
-    data.walmart,
-    data.delta,
-    JSON.stringify(data.citations),
-    new Date().toISOString()
-  )
+  _priceCache.set(data.product, {
+    ...data,
+    fetchedAt: new Date().toISOString(),
+  })
 }
 
 export function getAllSurveys(): { responses: SurveyRow[] } {
-  const db = getDb()
-  const rows = db.prepare("SELECT * FROM surveys").all() as (Omit<SurveyRow, "wouldRecommend"> & { wouldRecommend: number })[]
-  return {
-    responses: rows.map((r) => ({
-      ...r,
-      wouldRecommend: r.wouldRecommend === 1,
-    })) as any,
-  }
+  return readJSON<{ responses: SurveyRow[] }>("surveys.json")
 }

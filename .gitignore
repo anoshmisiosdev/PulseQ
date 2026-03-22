@@ -1,11 +1,14 @@
 node_modules/
 .env
+.env.local
+.env*.local
 dist/
 coverage/
 *.log
 .DS_Store
 .next/
-.env.example
+.vercel/
 pulse.db
 pulse.db-wal
 pulse.db-shm
+tsconfig.tsbuildinfo
