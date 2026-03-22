@@ -33,7 +33,7 @@ Requires Node.js v18+.
    ```
 
 Open http://localhost:3000.
-
+ts
 ## Features
 
 - **Dashboard** — customer risk heatmap, revenue-at-risk stats, filter by churn segment
