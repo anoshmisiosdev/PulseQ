@@ -22,7 +22,7 @@ const RISK_COLORS = {
 }
 
 export default function DashboardPage() {
-  const { customers, revenueRecovered, wonBackCount } = usePulse()
+  const { customers, revenueRecovered, wonBackCount, wonBackIds } = usePulse()
 
   const stats = useMemo(
     () => ({
@@ -101,9 +101,9 @@ export default function DashboardPage() {
   // Top priority customer
   const topPriority = useMemo(() => {
     return [...customers]
-      .filter((c) => c.confidenceLevel !== "low" && c.churnScore >= 50)
+      .filter((c) => c.confidenceLevel !== "low" && c.churnScore >= 50 && !wonBackIds.has(c.id))
       .sort((a, b) => b.churnScore - a.churnScore)[0] || null
-  }, [customers])
+  }, [customers, wonBackIds])
 
   return (
     <div className="space-y-6">
