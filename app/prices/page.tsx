@@ -338,7 +338,7 @@ export default function PricesPage() {
             Price Comparisons
           </h1>
           <p style={{ fontFamily: "var(--font-body)", fontWeight: 400, fontSize: 14, color: "#475569", marginTop: 4 }}>
-            Live market prices from Amazon, Target &amp; Walmart — enter your price to see how you stack up.
+            AI-powered local competitor prices — enter your price to see how you stack up.
           </p>
         </div>
         {products.length > 0 && (

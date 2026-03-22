@@ -32,7 +32,10 @@ export async function POST(request: Request) {
     // Cache miss — call Perplexity
     const profile = await getBusinessProfile()
     const locationStr = profile?.location ? ` in ${profile.location}` : ''
-    
+    const businessDesc = profile?.description
+      ? `a business described as: "${profile.description.slice(0, 150)}"`
+      : 'a local business'
+
     const pResp = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
         model: 'sonar',
         messages: [{
           role: 'user',
-          content: `Identify the 3 most relevant local competitors to a coffee shop${locationStr}. Find the current retail price of a "${product}" at each of these 3 locations. Return ONLY JSON: { "prices": [{ "name": "Competitor Name", "price": <number> }] }`
+          content: `I run ${businessDesc}${locationStr}. Identify the 3 most relevant local competitors to my business. Find the current retail price of "${product}" at each competitor. Return ONLY JSON: { "prices": [{ "name": "Competitor Name", "price": <number> }] }`
         }],
         return_citations: true
       })
@@ -61,13 +64,15 @@ export async function POST(request: Request) {
     const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice || 5.00
     const delta = (ourPrice || 5.00) - lowestPrice
 
-    // Store in cache
-    await setCachedPrice({
-      product,
-      prices: pricesArray,
-      delta: Math.round(delta * 100) / 100,
-      citations: pData.citations || [],
-    })
+    // Store in cache — only if we got real results; don't let cache errors block the response
+    if (pricesArray.length > 0) {
+      setCachedPrice({
+        product,
+        prices: pricesArray,
+        delta: Math.round(delta * 100) / 100,
+        citations: pData.citations || [],
+      }).catch((cacheErr: unknown) => console.warn('Cache write failed:', cacheErr))
+    }
 
     return NextResponse.json({
       product,

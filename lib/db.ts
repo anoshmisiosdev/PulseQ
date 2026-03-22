@@ -162,7 +162,7 @@ export async function saveBusinessProfile(profile: BusinessProfileRow): Promise<
     location: profile.location,
     description: profile.description,
     popularProducts: JSON.stringify(profile.popularProducts),
-  })
+  }, { onConflict: 'id' })
   if (error) throw error
 }
 
@@ -205,7 +205,7 @@ export async function setCachedPrice(input: Omit<PriceCacheRow, "fetchedAt">): P
     delta: input.delta,
     citations: JSON.stringify(input.citations),
     fetchedAt: new Date().toISOString(),
-  })
+  }, { onConflict: 'product' })
   if (error) throw error
 }
 
