@@ -1,3 +1,6 @@
+Requirements
+node.js
+
 How to run:
 1. npm install
 
