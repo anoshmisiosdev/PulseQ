@@ -6,20 +6,7 @@ export const metadata: Metadata = {
   title: 'Pulse | Customer Retention Intelligence',
   description: 'AI-powered customer retention for small businesses. Detect churn, generate win-back messages, and recover revenue.',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
+    icon: '/topping.png',
     apple: '/apple-icon.png',
   },
 }

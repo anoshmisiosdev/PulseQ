@@ -85,11 +85,9 @@ export function AppShell({ children, businessType }: AppShellProps) {
           boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
         }}
       >
-        {/* Logo — Outfit 700, cyan icon */}
+        {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(8,145,178,0.12)" }}>
-            <Activity className="w-4 h-4 text-[#0891b2]" />
-          </div>
+          <img src="/apple-icon.png" alt="Pulse" className="w-8 h-8 rounded-lg object-contain" />
           <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: "#0f172a", letterSpacing: "-0.01em" }}>
             Pulse
           </span>
