@@ -325,9 +325,8 @@ export default function PricesPage() {
     setYourPrices((prev) => ({ ...prev, [product]: value }))
   }
 
-  const isLoading = marketData.some((d) => d.loading)
-
-  if (!loaded) return null
+  const isLoading = !loaded || (products.length > 0 && (marketData.length === 0 || marketData.some((d) => d.loading)))
+  const skeletonCount = loaded ? products.length : 3
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -341,7 +340,7 @@ export default function PricesPage() {
             AI-powered local competitor prices — enter your price to see how you stack up.
           </p>
         </div>
-        {products.length > 0 && (
+        {loaded && products.length > 0 && (
           <button
             onClick={handleRefresh}
             disabled={isLoading || isRefreshing}
@@ -358,7 +357,7 @@ export default function PricesPage() {
       </div>
 
       {/* Empty state */}
-      {loaded && products.length === 0 && (
+      {loaded && !isLoading && products.length === 0 && (
         <div
           className="glass-card p-10 flex flex-col items-center text-center gap-4"
           style={{ borderRadius: 20 }}
@@ -383,10 +382,10 @@ export default function PricesPage() {
       )}
 
       {/* Cards grid */}
-      {products.length > 0 && (
+      {(isLoading || products.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {isLoading
-            ? products.map((p) => <SkeletonCard key={p} />)
+            ? Array.from({ length: skeletonCount }).map((_, i) => <SkeletonCard key={i} />)
             : marketData.map((data) => (
                 <ProductCard
                   key={data.product}
