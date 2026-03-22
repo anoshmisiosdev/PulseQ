@@ -56,13 +56,47 @@ export function usePulse() {
 
 const PROFILE_KEY = "pulse-business-profile"
 
+const defaultProfile: BusinessProfile = {
+  location: "",
+  description: "",
+  popularProducts: [],
+}
+
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [businessType, setBusinessType] = useState<"coffee_shop" | "gym" | "boutique">("coffee_shop")
   const [revenueRecovered, setRevenueRecovered] = useState(0)
   const [wonBackCount, setWonBackCount] = useState(0)
   const [wonBackIds, setWonBackIds] = useState<Set<string>>(new Set())
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [businessData, setBusinessData] = useState<Record<string, BusinessData>>({})
+  const [catalogData, setCatalogData] = useState<ProductData[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [businessProfile, setBusinessProfileState] = useState<BusinessProfile>(defaultProfile)
 
-  const customers = customersData as unknown as Customer[]
+  useEffect(() => {
+    const saved = localStorage.getItem(PROFILE_KEY)
+    if (saved) {
+      try { setBusinessProfileState(JSON.parse(saved)) } catch {}
+    }
+  }, [])
+
+  const setBusinessProfile = (profile: BusinessProfile) => {
+    setBusinessProfileState(profile)
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile))
+  }
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/customers").then((r) => r.json()),
+      fetch("/api/businesses").then((r) => r.json()),
+      fetch("/api/products").then((r) => r.json()),
+    ]).then(([custData, bizData, prodData]) => {
+      setCustomers(custData.customers || custData)
+      setBusinessData(bizData)
+      setCatalogData(prodData)
+      setLoaded(true)
+    })
+  }, [])
 
   const addWonBack = (customer: Customer) => {
     const recovery = customer.avgTransactionValue * 12
@@ -82,13 +116,10 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <PulseContext.Provider value={{ customers, businessType, revenueRecovered, wonBackCount, wonBackIds, addWonBack }}>
-      <AppShell
-        businessType={businessType}
-      >
+    <PulseContext.Provider value={{ customers, businessType, businessData, catalogData, revenueRecovered, wonBackCount, wonBackIds, addWonBack, businessProfile, setBusinessProfile }}>
+      <AppShell businessType={businessType}>
         {children}
       </AppShell>
     </PulseContext.Provider>
   )
 }
-

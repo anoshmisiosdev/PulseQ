@@ -5,7 +5,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { LayoutDashboard, Users, Target, Activity, Volume2, Store } from "lucide-react"
-import businessData from "@/lib/data/business.json"
 import { usePulse } from "./client-layout"
 
 const navItems = [
