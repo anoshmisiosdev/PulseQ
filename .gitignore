@@ -6,6 +6,3 @@ coverage/
 .DS_Store
 .next/
 .env.example
-pulse.db
-pulse.db-wal
-pulse.db-shm
