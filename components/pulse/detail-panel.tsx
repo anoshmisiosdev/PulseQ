@@ -154,6 +154,15 @@ Powered by Pulse`
   }, [customer, generateContent])
 
   const handlePlayVoice = async () => {
+    if (isPlaying) {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+      }
+      setIsPlaying(false)
+      return
+    }
+
     setIsPlaying(true)
     try {
       const textToSpeak = orchestrateData?.email?.body || emailContent
@@ -420,7 +429,6 @@ Powered by Pulse`
                 )}
                 <button
                   onClick={handlePlayVoice}
-                  disabled={isPlaying}
                   className="w-14 h-14 rounded-full flex items-center justify-center transition-all press-scale relative z-10"
                   style={{
                     background: isPlaying ? "#0e7490" : "#0891b2",

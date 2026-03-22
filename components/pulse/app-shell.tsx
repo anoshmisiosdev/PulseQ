@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Users, Target, Activity, Volume2, Loader2 } from "lucide-react"
+import { LayoutDashboard, Users, Target, Activity, Volume2 } from "lucide-react"
 import businessData from "@/lib/data/business.json"
 import { usePulse } from "./client-layout"
 
@@ -24,8 +24,16 @@ export function AppShell({ children, businessType }: AppShellProps) {
   const biz = businessData[businessType as keyof typeof businessData]
   const { customers, revenueRecovered, wonBackCount } = usePulse()
   const [isPlaying, setIsPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const handleAudioSummary = async () => {
+    if (isPlaying) {
+      audioRef.current?.pause()
+      audioRef.current = null
+      setIsPlaying(false)
+      return
+    }
+
     setIsPlaying(true)
     try {
       const response = await fetch('/api/briefing', {
@@ -44,8 +52,10 @@ export function AppShell({ children, businessType }: AppShellProps) {
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         const audio = new Audio(url)
+        audioRef.current = audio
         audio.onended = () => {
           setIsPlaying(false)
+          audioRef.current = null
           URL.revokeObjectURL(url)
         }
         audio.play()
@@ -95,16 +105,15 @@ export function AppShell({ children, businessType }: AppShellProps) {
         {/* Right — Audio Summary */}
         <button
           onClick={handleAudioSummary}
-          disabled={isPlaying}
-          className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-white shadow-sm transition-all hover:opacity-90 disabled:opacity-70 cursor-pointer disabled:cursor-not-allowed"
-          style={{ background: "#0891b2", fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14 }}
+          className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-white shadow-sm transition-all hover:opacity-90 cursor-pointer"
+          style={{ background: isPlaying ? "#0e7490" : "#0891b2", fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14 }}
         >
           {isPlaying ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Volume2 className="w-3.5 h-3.5 animate-pulse" />
           ) : (
             <Volume2 className="w-3.5 h-3.5" />
           )}
-          <span className="hidden sm:inline">{isPlaying ? "Playing..." : "Audio Summary"}</span>
+          <span className="hidden sm:inline">{isPlaying ? "Stop" : "Audio Summary"}</span>
         </button>
       </header>
 

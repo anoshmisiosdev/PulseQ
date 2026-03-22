@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useRef } from "react"
 import { CustomerCard } from "./customer-card"
 import { StatCard } from "./stat-card"
 import { DetailPanel } from "./detail-panel"
 import { cn } from "@/lib/utils"
 import type { Customer } from "@/lib/rfm"
 import { calculateAtRiskRevenue, getCriticalCount, getAverageDaysSince } from "@/lib/rfm"
-import { Play, Coffee, Dumbbell, Store, Sparkles } from "lucide-react"
+import { Play, Square, Coffee, Dumbbell, Store, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import businessData from "@/lib/data/business.json"
 import catalogData from "@/lib/data/catalog.json"
@@ -40,6 +40,7 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
   const [revenueRecovered, setRevenueRecovered] = useState(0)
   const [wonBackCount, setWonBackCount] = useState(0)
   const [isPlayingBriefing, setIsPlayingBriefing] = useState(false)
+  const briefingAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const filteredCustomers = useMemo(() => {
     if (filter === "all") return customers
@@ -81,6 +82,13 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
   }, [])
 
   const handlePlayBriefing = async () => {
+    if (isPlayingBriefing) {
+      briefingAudioRef.current?.pause()
+      briefingAudioRef.current = null
+      setIsPlayingBriefing(false)
+      return
+    }
+
     setIsPlayingBriefing(true)
     try {
       const response = await fetch('/api/briefing', {
@@ -100,7 +108,11 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         const audio = new Audio(url)
-        audio.onended = () => setIsPlayingBriefing(false)
+        briefingAudioRef.current = audio
+        audio.onended = () => {
+          setIsPlayingBriefing(false)
+          briefingAudioRef.current = null
+        }
         audio.play()
       } else {
         const data = await response.json()
@@ -169,9 +181,9 @@ export function Dashboard({ customers, businessType, onBusinessTypeChange }: Das
               </div>
 
               {/* Daily Briefing */}
-              <Button onClick={handlePlayBriefing} disabled={isPlayingBriefing} className="gap-2 rounded-xl" size="lg">
-                <Play className="w-4 h-4" />
-                {isPlayingBriefing ? "Playing..." : "Today's Briefing"}
+              <Button onClick={handlePlayBriefing} className="gap-2 rounded-xl" size="lg">
+                {isPlayingBriefing ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                {isPlayingBriefing ? "Stop" : "Today's Briefing"}
               </Button>
             </div>
           </div>
