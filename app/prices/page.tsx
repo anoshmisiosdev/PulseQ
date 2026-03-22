@@ -9,9 +9,7 @@ import { cn } from "@/lib/utils"
 interface MarketData {
   product: string
   ourPrice: number | null
-  amazon: number | null
-  target: number | null
-  walmart: number | null
+  prices: { name: string, price: number }[]
   delta: number | null
   citations: string[]
   source: "perplexity_live" | "fallback_static" | "cache"
@@ -24,7 +22,7 @@ function getPctDiff(yourPrice: number, lowestMarket: number): number {
 }
 
 function getLowestMarket(data: MarketData): number | null {
-  const prices = [data.amazon, data.target, data.walmart].filter((p): p is number => p != null)
+  const prices = data.prices.map(p => p.price).filter((p): p is number => p != null)
   return prices.length > 0 ? Math.min(...prices) : null
 }
 
@@ -175,9 +173,9 @@ function ProductCard({ data, yourPrice, onPriceChange }: {
           className="grid grid-cols-3 gap-2 rounded-2xl py-4 px-2"
           style={{ background: "rgba(241,245,249,0.6)" }}
         >
-          <PriceBadge label="Amazon" price={data.amazon} />
-          <PriceBadge label="Target" price={data.target} />
-          <PriceBadge label="Walmart" price={data.walmart} />
+          {data.prices.map((p, idx) => (
+            <PriceBadge key={idx} label={p.name} price={p.price} />
+          ))}
         </div>
       )}
 
@@ -262,9 +260,7 @@ export default function PricesPage() {
       productList.map((p) => ({
         product: p,
         ourPrice: null,
-        amazon: null,
-        target: null,
-        walmart: null,
+        prices: [],
         delta: null,
         citations: [],
         source: "fallback_static",
@@ -292,9 +288,7 @@ export default function PricesPage() {
           return {
             product,
             ourPrice: d.ourPrice,
-            amazon: d.amazon ?? null,
-            target: d.target ?? null,
-            walmart: d.walmart ?? null,
+            prices: d.prices || [],
             delta: d.delta ?? null,
             citations: d.citations || [],
             source: d.source || "fallback_static",
@@ -305,9 +299,7 @@ export default function PricesPage() {
         return {
           product,
           ourPrice: null,
-          amazon: null,
-          target: null,
-          walmart: null,
+          prices: [],
           delta: null,
           citations: [],
           source: "fallback_static",

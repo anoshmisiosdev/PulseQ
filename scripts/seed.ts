@@ -54,9 +54,7 @@ async function main() {
     CREATE TABLE competitors (
       "name" TEXT PRIMARY KEY,
       "ourPrice" REAL NOT NULL,
-      "amazon" REAL NOT NULL,
-      "target" REAL NOT NULL,
-      "walmart" REAL NOT NULL,
+      "prices" TEXT NOT NULL DEFAULT '[]',
       "delta" REAL NOT NULL
     )
   `
@@ -112,9 +110,7 @@ async function main() {
   await sql`
     CREATE TABLE price_cache (
       "product" TEXT PRIMARY KEY,
-      "amazon" REAL,
-      "target" REAL,
-      "walmart" REAL,
+      "prices" TEXT NOT NULL DEFAULT '[]',
       "delta" REAL,
       "citations" TEXT NOT NULL DEFAULT '[]',
       "fetchedAt" TEXT NOT NULL
@@ -154,8 +150,8 @@ async function main() {
 
   for (const c of competitorsData.products) {
     await sql`
-      INSERT INTO competitors ("name", "ourPrice", "amazon", "target", "walmart", "delta")
-      VALUES (${c.name}, ${c.ourPrice}, ${c.amazon}, ${c.target}, ${c.walmart}, ${c.delta})
+      INSERT INTO competitors ("name", "ourPrice", "prices", "delta")
+      VALUES (${c.name}, ${c.ourPrice}, ${JSON.stringify(c.prices)}, ${c.delta})
     `
   }
   console.log(`Seeded ${competitorsData.products.length} competitors`)

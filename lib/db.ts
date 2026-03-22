@@ -33,9 +33,7 @@ export interface ProductRow {
 export interface CompetitorRow {
   name: string
   ourPrice: number
-  amazon: number
-  target: number
-  walmart: number
+  prices: { name: string, price: number }[]
   delta: number
 }
 
@@ -96,7 +94,11 @@ export async function getAllProducts(): Promise<ProductRow[]> {
 export async function getAllCompetitors(): Promise<{ products: CompetitorRow[] }> {
   const { data, error } = await supabase.from("competitors").select("*")
   if (error) throw error
-  return { products: (data || []) as CompetitorRow[] }
+  const mapped = (data || []).map((row: any) => ({
+    ...row,
+    prices: typeof row.prices === 'string' ? JSON.parse(row.prices) : (row.prices || [])
+  }))
+  return { products: mapped as CompetitorRow[] }
 }
 
 export async function getAllCustomers() {
@@ -170,9 +172,7 @@ const CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
 
 export interface PriceCacheRow {
   product: string
-  amazon: number | null
-  target: number | null
-  walmart: number | null
+  prices: { name: string, price: number }[]
   delta: number | null
   citations: string[]
   fetchedAt: string
@@ -191,9 +191,7 @@ export async function getCachedPrice(product: string): Promise<PriceCacheRow | n
 
   return {
     product: data.product,
-    amazon: data.amazon,
-    target: data.target,
-    walmart: data.walmart,
+    prices: typeof data.prices === "string" ? JSON.parse(data.prices) : (data.prices || []),
     delta: data.delta,
     citations: typeof data.citations === "string" ? JSON.parse(data.citations) : data.citations,
     fetchedAt: data.fetchedAt,
@@ -203,9 +201,7 @@ export async function getCachedPrice(product: string): Promise<PriceCacheRow | n
 export async function setCachedPrice(input: Omit<PriceCacheRow, "fetchedAt">): Promise<void> {
   const { error } = await supabase.from("price_cache").upsert({
     product: input.product,
-    amazon: input.amazon,
-    target: input.target,
-    walmart: input.walmart,
+    prices: JSON.stringify(input.prices),
     delta: input.delta,
     citations: JSON.stringify(input.citations),
     fetchedAt: new Date().toISOString(),

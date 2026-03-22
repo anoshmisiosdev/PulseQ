@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import type { Customer } from "@/lib/rfm"
-import { getAllCompetitors, getAllProducts, getCachedPrice, setCachedPrice } from "@/lib/db"
+import { getAllCompetitors, getAllProducts, getCachedPrice, setCachedPrice, getBusinessProfile } from "@/lib/db"
 
 interface OrchestrateRequest {
   customer: Customer
@@ -84,20 +84,18 @@ Return ONLY valid JSON:
   }
 }
 
-async function runPricingAgent(product: string, ourPrice: number) {
+async function runPricingAgent(product: string, ourPrice: number, location: string) {
   // Check cache first
   const cached = await getCachedPrice(product)
   if (cached) {
-    const competitors = [cached.amazon, cached.target, cached.walmart].filter((p): p is number => p != null)
+    const competitors = (cached.prices || []).map((p: any) => p.price).filter((p): p is number => p != null)
     const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice
     const delta = ourPrice - lowestPrice
 
     return {
       product,
       ourPrice,
-      amazon: cached.amazon,
-      target: cached.target,
-      walmart: cached.walmart,
+      prices: cached.prices || [],
       delta: Math.round(delta * 100) / 100,
       valueMessage: 'Our prices are competitive — and our quality speaks for itself.',
       citations: cached.citations,
@@ -116,7 +114,7 @@ async function runPricingAgent(product: string, ourPrice: number) {
         model: 'sonar',
         messages: [{
           role: 'user',
-          content: `Current retail price of "${product}" on Amazon, Target, Walmart. Return ONLY JSON: { "amazon": <number>, "target": <number>, "walmart": <number> }`
+          content: `Identify the 3 most relevant local competitors to a coffee shop${location ? ` in ${location}` : ''}. Find the current retail price of a "${product}" at each of these 3 locations. Return ONLY JSON: { "prices": [{ "name": "Competitor Name", "price": <number> }] }`
         }],
         return_citations: true
       })
@@ -128,8 +126,9 @@ async function runPricingAgent(product: string, ourPrice: number) {
 
     if (!jsonMatch) throw new Error('No JSON in Perplexity response')
 
-    const prices = JSON.parse(jsonMatch[0])
-    const competitors = [prices.amazon, prices.target, prices.walmart].filter((p: any) => p != null)
+    const parsed = JSON.parse(jsonMatch[0])
+    const pricesArray = parsed.prices || []
+    const competitors = pricesArray.map((p: any) => p.price).filter((p: any) => p != null)
     const lowestPrice = competitors.length > 0 ? Math.min(...competitors) : ourPrice
     const delta = ourPrice - lowestPrice
 
@@ -146,9 +145,7 @@ async function runPricingAgent(product: string, ourPrice: number) {
     // Cache the result
     await setCachedPrice({
       product,
-      amazon: prices.amazon ?? null,
-      target: prices.target ?? null,
-      walmart: prices.walmart ?? null,
+      prices: pricesArray,
       delta: Math.round(delta * 100) / 100,
       citations: pData.citations || [],
     })
@@ -156,9 +153,7 @@ async function runPricingAgent(product: string, ourPrice: number) {
     return {
       product,
       ourPrice,
-      amazon: prices.amazon,
-      target: prices.target,
-      walmart: prices.walmart,
+      prices: pricesArray,
       delta: Math.round(delta * 100) / 100,
       valueMessage: valueMsg.content[0].type === 'text' ? valueMsg.content[0].text : '',
       citations: pData.citations || [],
@@ -171,9 +166,7 @@ async function runPricingAgent(product: string, ourPrice: number) {
     return {
       product,
       ourPrice,
-      amazon: match?.amazon || 4.99,
-      target: match?.target || 5.20,
-      walmart: match?.walmart || 4.85,
+      prices: match?.prices || [{"name": "Fallback Cafe", "price": 4.99}],
       delta: match?.delta || -0.10,
       valueMessage: 'Our prices are competitive — and our quality speaks for itself.',
       citations: [],
@@ -264,6 +257,9 @@ export async function POST(request: Request) {
       catalogData = await getAllProducts()
     }
 
+    const profile = await getBusinessProfile()
+    const location = profile?.location || ''
+
     const pricingProduct = customer.topItems?.[0] || 'Cold Brew Coffee'
     const pricingPrice = Array.isArray(catalogData)
       ? catalogData.find((p: any) => p.name?.toLowerCase().includes(pricingProduct.toLowerCase()))?.price || 5.00
@@ -272,7 +268,7 @@ export async function POST(request: Request) {
     const [churn, recommendations, pricing] = await Promise.all([
       runChurnAgent(customer),
       runRecommenderAgent(customer, catalogData),
-      runPricingAgent(pricingProduct, pricingPrice),
+      runPricingAgent(pricingProduct, pricingPrice, location),
     ])
 
     const email = await runSynthesisAgent(
