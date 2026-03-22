@@ -1,0 +1,41 @@
+{
+  "coffee_shop": {
+    "name": "Hayward Coffee Co.",
+    "type": "coffee_shop",
+    "tone": "warm, neighborhood, unhurried",
+    "voiceId": "21m00Tcm4TlvDq8ikWAM",
+    "voiceName": "Rachel",
+    "discountBudget": 500,
+    "avgTransactionValue": 8.50,
+    "customerLifetimeValue": 1020,
+    "emailSignoff": "— The team at Hayward Coffee Co.",
+    "emailOpening": "Hi {firstName},",
+    "productLanguage": "our coffee is fresh roasted"
+  },
+  "gym": {
+    "name": "Fitwell Gym",
+    "type": "gym",
+    "tone": "energetic, motivational, direct",
+    "voiceId": "EXAVITQu4vr4xnSDxMaL",
+    "voiceName": "Josh",
+    "discountBudget": 1000,
+    "avgTransactionValue": 120,
+    "customerLifetimeValue": 2880,
+    "emailSignoff": "— Coach at Fitwell",
+    "emailOpening": "Hey {firstName},",
+    "productLanguage": "your fitness journey"
+  },
+  "boutique": {
+    "name": "Aria Boutique",
+    "type": "boutique",
+    "tone": "warm, aspirational, polished",
+    "voiceId": "VR6AewLBTwakI28Z5BxO",
+    "voiceName": "Bella",
+    "discountBudget": 750,
+    "avgTransactionValue": 85,
+    "customerLifetimeValue": 1275,
+    "emailSignoff": "— The Aria Team",
+    "emailOpening": "Dear {firstName},",
+    "productLanguage": "our curated collection"
+  }
+}
