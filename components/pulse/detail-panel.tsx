@@ -363,13 +363,22 @@ Powered by Pulse`
                   >
                     {emailContent}
                   </div>
-                  <button
-                    onClick={() => handleCopy(emailContent)}
-                    className="w-full py-2.5 rounded-xl flex items-center justify-center gap-2 glass-inset hover:bg-white/50 transition-all"
-                    style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, borderRadius: 12, color: copied ? "#10b981" : "#475569" }}
-                  >
-                    {copied ? <><CheckCircle2 className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy Email</>}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleCopy(emailContent)}
+                      className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 glass-inset hover:bg-white/50 transition-all"
+                      style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, borderRadius: 12, color: copied ? "#10b981" : "#475569" }}
+                    >
+                      {copied ? <><CheckCircle2 className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy</>}
+                    </button>
+                    <a
+                      href={`mailto:${encodeURIComponent(customer.email)}?subject=${encodeURIComponent(`We miss you at ${business.name}!`)}&body=${encodeURIComponent(emailContent)}`}
+                      className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-white transition-all hover:opacity-90"
+                      style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, borderRadius: 12, background: "#0891b2" }}
+                    >
+                      <Mail className="w-4 h-4" /> Send Email
+                    </a>
+                  </div>
                 </div>
               )}
 
