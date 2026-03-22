@@ -33,7 +33,7 @@ function formatDate(dateStr: string) {
 }
 
 export default function CustomersPage() {
-  const { customers, businessType, addWonBack } = usePulse()
+  const { customers, businessType, wonBackIds, addWonBack } = usePulse()
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [filter, setFilter] = useState<FilterType>("all")
   const [search, setSearch] = useState("")
@@ -50,7 +50,7 @@ export default function CustomersPage() {
   }
 
   const filteredCustomers = useMemo(() => {
-    let result = [...customers]
+    let result = customers.filter((c) => !wonBackIds.has(c.id))
 
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -83,17 +83,19 @@ export default function CustomersPage() {
     })
 
     return result
-  }, [customers, filter, search, sortKey, sortDir])
+  }, [customers, wonBackIds, filter, search, sortKey, sortDir])
 
-  const filterCounts = useMemo(
-    () => ({
-      all: customers.length,
-      critical: customers.filter((c) => c.churnScore >= 80 && c.confidenceLevel !== "low").length,
-      "at-risk": customers.filter((c) => c.churnScore >= 50 && c.churnScore < 80 && c.confidenceLevel !== "low").length,
-      watch: customers.filter((c) => c.churnScore >= 30 && c.churnScore < 50 && c.confidenceLevel !== "low").length,
-      loyal: customers.filter((c) => c.churnScore < 30 && c.confidenceLevel !== "low").length,
-    }),
-    [customers]
+  const filterCounts = useMemo(() => {
+      const active = customers.filter((c) => !wonBackIds.has(c.id))
+      return {
+        all: active.length,
+        critical: active.filter((c) => c.churnScore >= 80 && c.confidenceLevel !== "low").length,
+        "at-risk": active.filter((c) => c.churnScore >= 50 && c.churnScore < 80 && c.confidenceLevel !== "low").length,
+        watch: active.filter((c) => c.churnScore >= 30 && c.churnScore < 50 && c.confidenceLevel !== "low").length,
+        loyal: active.filter((c) => c.churnScore < 30 && c.confidenceLevel !== "low").length,
+      }
+    },
+    [customers, wonBackIds]
   )
 
   const handleCustomerClick = useCallback((customer: Customer) => {
@@ -116,7 +118,7 @@ export default function CustomersPage() {
             Customer Database
           </h1>
           <p style={{ fontFamily: "var(--font-body)", fontWeight: 400, fontSize: 14, color: "#475569", marginTop: 4 }}>
-            {customers.length} customers tracked — tap any row to see details and take action
+            {filterCounts.all} customers tracked — tap any row to see details and take action
           </p>
         </div>
 
