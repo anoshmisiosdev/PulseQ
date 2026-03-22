@@ -89,6 +89,16 @@ db.exec(`
   );
 
   INSERT INTO business_profiles (id) VALUES ('default');
+
+  CREATE TABLE price_cache (
+    product TEXT PRIMARY KEY,
+    amazon REAL,
+    target REAL,
+    walmart REAL,
+    delta REAL,
+    citations TEXT NOT NULL DEFAULT '[]',
+    fetchedAt TEXT NOT NULL
+  );
 `)
 
 console.log("Tables created")
