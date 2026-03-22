@@ -129,7 +129,16 @@ export async function getAllCustomers() {
     pattern: c.pattern,
     spendTrend: c.spendTrend,
     avgTransactionValue: c.avgTransactionValue,
+    retained: c.retained ?? false,
   }))
+}
+
+export async function markCustomerRetained(customerId: string): Promise<void> {
+  const { error } = await supabase
+    .from("customers")
+    .update({ retained: true })
+    .eq("id", customerId)
+  if (error) throw error
 }
 
 // ── Business Profile ───────────────────────────────────

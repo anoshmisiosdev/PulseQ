@@ -71,7 +71,8 @@ async function main() {
       "confidenceLevel" TEXT NOT NULL,
       "pattern" TEXT NOT NULL,
       "spendTrend" TEXT NOT NULL,
-      "avgTransactionValue" REAL NOT NULL
+      "avgTransactionValue" REAL NOT NULL,
+      "retained" BOOLEAN NOT NULL DEFAULT false
     )
   `
 
