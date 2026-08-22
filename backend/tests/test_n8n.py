@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from app.services import n8n
 
@@ -41,3 +42,60 @@ async def test_notify_swallows_delivery_failures():
         )
 
     assert ok is False
+
+
+# ── reset_recovery_workflow: unlike notify(), this one is meant to raise ────
+
+
+async def test_reset_recovery_workflow_requires_config():
+    with pytest.raises(n8n.N8nAdminError, match="not configured|isn't configured"):
+        await n8n.reset_recovery_workflow("", "")
+
+
+async def test_reset_recovery_workflow_requires_a_prior_import():
+    async def handler(_request):
+        return httpx.Response(200, json={"data": []})  # no matching workflow
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(n8n.N8nAdminError, match="import it once first"):
+            await n8n.reset_recovery_workflow(
+                "http://localhost:5678", "test-key", http_client=client
+            )
+
+
+async def test_reset_recovery_workflow_overwrites_the_matching_workflow():
+    put_calls = []
+
+    async def handler(request: httpx.Request):
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": "wf1", "name": "Pulse — post-recovery review request"},
+                        {"id": "wf2", "name": "Some other workflow"},
+                    ]
+                },
+            )
+        put_calls.append(request)
+        return httpx.Response(200, json={"id": "wf1"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        url = await n8n.reset_recovery_workflow(
+            "http://localhost:5678/", "test-key", http_client=client
+        )
+
+    assert url == "http://localhost:5678/workflow/wf1"
+    assert len(put_calls) == 1
+    assert put_calls[0].url.path.endswith("/workflows/wf1")
+
+
+async def test_reset_recovery_workflow_wraps_http_errors():
+    async def handler(_request):
+        return httpx.Response(500)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(n8n.N8nAdminError, match="admin API request failed"):
+            await n8n.reset_recovery_workflow(
+                "http://localhost:5678", "test-key", http_client=client
+            )

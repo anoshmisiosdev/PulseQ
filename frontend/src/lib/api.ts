@@ -167,6 +167,12 @@ export interface AutomationRuleInput {
   enabled?: boolean;
 }
 
+export interface ReviewRequestSettings {
+  enabled: boolean;
+  review_link: string | null;
+  n8n_base_url: string;
+}
+
 export type CampaignSendStatus = "pending" | "approved" | "sent" | "delivered" | "failed" | "skipped";
 
 export interface CampaignSend {
@@ -1026,6 +1032,29 @@ export const api = {
     if (!res.ok && res.status !== 204) {
       throw new Error(`Request failed (${res.status})`);
     }
+  },
+
+  async getReviewRequestSettings(): Promise<ReviewRequestSettings> {
+    return getJson<ReviewRequestSettings>("/api/automations/review-request-settings");
+  },
+
+  async updateReviewRequestSettings(
+    input: { enabled: boolean; review_link: string | null }
+  ): Promise<ReviewRequestSettings> {
+    const res = await fetch(`${BASE}/api/automations/review-request-settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(input),
+    });
+    return asJson<ReviewRequestSettings>(res);
+  },
+
+  async resetReviewRequestWorkflow(): Promise<{ workflow_url: string }> {
+    const res = await fetch(`${BASE}/api/automations/review-request-settings/reset-workflow`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    return asJson<{ workflow_url: string }>(res);
   },
 
   async listSends(limit = 50): Promise<CampaignSend[]> {

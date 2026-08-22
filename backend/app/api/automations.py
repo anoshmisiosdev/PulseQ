@@ -29,8 +29,12 @@ from app.schemas.api import (
     CampaignSendOut,
     DispatchSummaryOut,
     RecoverySummaryOut,
+    ResetWorkflowOut,
+    ReviewRequestSettingsIn,
+    ReviewRequestSettingsOut,
     SendApproveIn,
 )
+from app.services import n8n
 from app.services.attribution import detect_recoveries
 from app.services.automations import attempt_send, dispatch_automations
 from app.services.ingest import _uuid
@@ -156,6 +160,54 @@ async def delete_rule(
         raise HTTPException(404, "Not found")
     await db.delete(rule)
     await db.commit()
+
+
+def _review_settings_out(biz: Business) -> ReviewRequestSettingsOut:
+    return ReviewRequestSettingsOut(
+        enabled=biz.review_request_enabled,
+        review_link=biz.review_link,
+        n8n_base_url=settings.n8n_base_url,
+    )
+
+
+@router.get("/review-request-settings", response_model=ReviewRequestSettingsOut)
+async def get_review_request_settings(
+    db: AsyncSession = Depends(get_db), user: CurrentUser = CurrentUserDep
+) -> ReviewRequestSettingsOut:
+    biz = await db.get(Business, _uuid(user.business_id))
+    if biz is None:
+        raise HTTPException(404, "Not found")
+    return _review_settings_out(biz)
+
+
+@router.patch("/review-request-settings", response_model=ReviewRequestSettingsOut)
+async def update_review_request_settings(
+    payload: ReviewRequestSettingsIn,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = CurrentUserDep,
+) -> ReviewRequestSettingsOut:
+    biz = await db.get(Business, _uuid(user.business_id))
+    if biz is None:
+        raise HTTPException(404, "Not found")
+    review_link = (payload.review_link or "").strip() or None
+    if payload.enabled and not review_link:
+        raise HTTPException(422, "Add your review link before turning this on.")
+    biz.review_request_enabled = payload.enabled
+    biz.review_link = review_link
+    await db.commit()
+    return _review_settings_out(biz)
+
+
+@router.post("/review-request-settings/reset-workflow", response_model=ResetWorkflowOut)
+async def reset_review_request_workflow(user: CurrentUser = CurrentUserDep) -> ResetWorkflowOut:
+    """Escape hatch for "I broke the n8n workflow editing it by hand" —
+    overwrites it with the shipped template. Not business-scoped: it's one
+    shared local n8n instance, not per-tenant infra."""
+    try:
+        url = await n8n.reset_recovery_workflow(settings.n8n_base_url, settings.n8n_api_key)
+    except n8n.N8nAdminError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return ResetWorkflowOut(workflow_url=url)
 
 
 @router.get("/sends", response_model=list[CampaignSendOut])

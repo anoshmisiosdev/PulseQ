@@ -131,8 +131,11 @@ def test_no_sends_means_no_recoveries():
 # ── the DB path ──────────────────────────────────────────────────────────────
 
 
-async def _seed_business(db) -> Customer:
-    await ingest.ensure_business(db, BUSINESS_ID, "Hayward Coffee Co.", "cafe")
+async def _seed_business(db, *, review_requests_on: bool = False) -> Customer:
+    biz = await ingest.ensure_business(db, BUSINESS_ID, "Hayward Coffee Co.", "cafe")
+    if review_requests_on:
+        biz.review_request_enabled = True
+        biz.review_link = "https://g.page/r/hayward-coffee/review"
     customer = Customer(
         business_id=ingest._uuid(BUSINESS_ID),
         source="csv",
@@ -203,7 +206,7 @@ async def test_detect_recoveries_notifies_n8n_unless_opted_out(db, monkeypatch):
     monkeypatch.setattr(n8n_service, "notify", _fake_notify)
     monkeypatch.setattr(settings, "n8n_recovery_webhook_url", "https://n8n.example/hook")
 
-    customer = await _seed_business(db)
+    customer = await _seed_business(db, review_requests_on=True)
     await _seed_send(db, customer, days_ago=10)
     db.add(
         Visit(
@@ -222,6 +225,7 @@ async def test_detect_recoveries_notifies_n8n_unless_opted_out(db, monkeypatch):
     assert webhook_url == "https://n8n.example/hook"
     assert event == "recovery.attributed"
     assert payload["customer_id"] == str(customer.id)
+    assert payload["review_link"] == "https://g.page/r/hayward-coffee/review"
 
 
 async def test_detect_recoveries_skips_n8n_for_do_not_contact(db, monkeypatch):
@@ -234,8 +238,37 @@ async def test_detect_recoveries_skips_n8n_for_do_not_contact(db, monkeypatch):
     monkeypatch.setattr(n8n_service, "notify", _fake_notify)
     monkeypatch.setattr(settings, "n8n_recovery_webhook_url", "https://n8n.example/hook")
 
-    customer = await _seed_business(db)
+    customer = await _seed_business(db, review_requests_on=True)
     customer.do_not_contact = True
+    await _seed_send(db, customer, days_ago=10)
+    db.add(
+        Visit(
+            business_id=ingest._uuid(BUSINESS_ID),
+            customer_id=customer.id,
+            source="csv",
+            occurred_at=datetime.now() - timedelta(days=3),
+        )
+    )
+    await db.flush()
+
+    await detect_recoveries(db, BUSINESS_ID)
+
+    assert calls == []
+
+
+async def test_detect_recoveries_skips_n8n_when_review_requests_are_off(db, monkeypatch):
+    """Default state: no owner opt-in yet, so no review_link either — nothing
+    for a workflow to send, so detect_recoveries shouldn't even try."""
+    calls = []
+
+    async def _fake_notify(webhook_url, event, payload):
+        calls.append((webhook_url, event, payload))
+        return True
+
+    monkeypatch.setattr(n8n_service, "notify", _fake_notify)
+    monkeypatch.setattr(settings, "n8n_recovery_webhook_url", "https://n8n.example/hook")
+
+    customer = await _seed_business(db)  # review_requests_on defaults to False
     await _seed_send(db, customer, days_ago=10)
     db.add(
         Visit(

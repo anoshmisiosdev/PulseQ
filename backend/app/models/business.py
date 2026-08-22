@@ -20,6 +20,10 @@ class Business(UUIDMixin, Base):
     timezone: Mapped[str] = mapped_column(String(64), default="America/New_York")
     # Multi-location readiness without a multi-location product yet.
     location_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Post-recovery review-request automation (n8n-backed, see app/services/n8n.py).
+    # Off by default — an owner opts in and supplies their own review link.
+    review_request_enabled: Mapped[bool] = mapped_column(default=False)
+    review_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class User(UUIDMixin, Base):

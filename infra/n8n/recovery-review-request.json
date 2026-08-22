@@ -31,7 +31,7 @@
         "fromEmail": "hello@yourbusiness.example",
         "toEmail": "={{ $json.body.email }}",
         "subject": "Glad you're back, {{ $json.body.customer_name }}!",
-        "text": "Hi {{ $json.body.customer_name }},\n\nThanks for coming back — we'd love a quick review if you have a minute:\n\n[your Google/Yelp review link here]\n\n— The team",
+        "text": "Hi {{ $json.body.customer_name }},\n\nThanks for coming back to {{ $json.body.business_name }} — we'd love a quick review if you have a minute:\n\n{{ $json.body.review_link }}\n\n— The team",
         "options": {}
       },
       "id": "send-email",

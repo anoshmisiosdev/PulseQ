@@ -372,6 +372,11 @@ class Settings(BaseSettings):
     n8n_approval_webhook_url: str = ""
     n8n_band_change_webhook_url: str = ""
     n8n_sync_failure_webhook_url: str = ""
+    # n8n's own admin REST API (Settings -> API in n8n) — only used for the
+    # "reset this workflow to the shipped default" button, not for the
+    # notify() triggers above.
+    n8n_base_url: str = ""
+    n8n_api_key: str = ""
 
     @property
     def visitor_admin_email_set(self) -> set[str]:

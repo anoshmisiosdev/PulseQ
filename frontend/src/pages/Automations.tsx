@@ -5,6 +5,7 @@ import {
   type AutomationMode,
   type AutomationRule,
   type CampaignSend,
+  type ReviewRequestSettings,
   type TriggerBand,
 } from "../lib/api";
 
@@ -27,13 +28,19 @@ export default function Automations() {
   const [error, setError] = useState<string | null>(null);
   const [showAddRule, setShowAddRule] = useState(false);
   const [dispatching, setDispatching] = useState(false);
+  const [reviewSettings, setReviewSettings] = useState<ReviewRequestSettings | null>(null);
 
   const load = async () => {
     setError(null);
     try {
-      const [r, s] = await Promise.all([api.listAutomationRules(), api.listSends(50)]);
+      const [r, s, rr] = await Promise.all([
+        api.listAutomationRules(),
+        api.listSends(50),
+        api.getReviewRequestSettings(),
+      ]);
       setRules(r);
       setSends(s);
+      setReviewSettings(rr);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load automations");
     } finally {
@@ -77,6 +84,17 @@ export default function Automations() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't send — check quiet hours");
       load();
+    }
+  };
+
+  const saveReviewSettings = async (next: { enabled: boolean; review_link: string | null }) => {
+    const prev = reviewSettings;
+    setReviewSettings((s) => (s ? { ...s, ...next } : s)); // optimistic
+    try {
+      setReviewSettings(await api.updateReviewRequestSettings(next));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save review-request settings");
+      setReviewSettings(prev);
     }
   };
 
@@ -124,6 +142,10 @@ export default function Automations() {
         <Metric n={awaiting} label="Awaiting your approval" color="#C0632F" divider />
         <Metric n={failed} label="Failed" color="#A23B1E" />
       </div>
+
+      {reviewSettings && (
+        <ReviewRequestCard settings={reviewSettings} onSave={saveReviewSettings} />
+      )}
 
       <div>
         <div className="mb-4 flex items-center justify-between">
@@ -294,6 +316,124 @@ function AddRuleForm({
       >
         {saving ? "Creating…" : "Create rule"}
       </button>
+    </div>
+  );
+}
+
+function ReviewRequestCard({
+  settings,
+  onSave,
+}: {
+  settings: ReviewRequestSettings;
+  onSave: (next: { enabled: boolean; review_link: string | null }) => void;
+}) {
+  const [link, setLink] = useState(settings.review_link ?? "");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+
+  const resetWorkflow = async () => {
+    if (!confirm("Reset the review-request workflow in n8n back to the shipped default? Any edits made in the n8n editor will be lost.")) {
+      return;
+    }
+    setResetting(true);
+    setResetMsg(null);
+    try {
+      await api.resetReviewRequestWorkflow();
+      setResetMsg("Reset — the workflow is back to the shipped default.");
+    } catch (e) {
+      setResetMsg(e instanceof Error ? e.message : "Couldn't reset the workflow");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const toggle = () => {
+    if (!settings.enabled && !link.trim()) {
+      setLinkError("Add your review link first");
+      return;
+    }
+    setLinkError(null);
+    onSave({ enabled: !settings.enabled, review_link: link.trim() || null });
+  };
+
+  return (
+    <div
+      className="glass anim-fade-up p-6"
+      style={{ animationDelay: "0.08s", opacity: settings.enabled ? 1 : 0.85, borderRadius: 18 }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="mb-1 text-[17px] font-bold" style={{ color: "var(--ink)" }}>
+            Ask for a review after a win-back
+          </p>
+          <p className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+            Two days after a recovered customer's first visit back, Churnary emails them your
+            review link. Skips anyone who's opted out.
+          </p>
+        </div>
+        <button
+          onClick={toggle}
+          aria-label="Toggle review requests"
+          className="relative h-[27px] w-[46px] shrink-0 rounded-full"
+          style={{ background: settings.enabled ? "var(--sage)" : "#D8C6B0", transition: "background .25s ease" }}
+        >
+          <span
+            className="absolute top-[3px] h-[21px] w-[21px] rounded-full bg-white"
+            style={{
+              left: settings.enabled ? 22 : 3,
+              boxShadow: "0 2px 5px rgba(0,0,0,.2)",
+              transition: "left .25s cubic-bezier(.2,.8,.2,1)",
+            }}
+          />
+        </button>
+      </div>
+
+      <div className="mt-4 flex items-center gap-2.5">
+        <input
+          value={link}
+          onChange={(e) => {
+            setLink(e.target.value);
+            setLinkError(null);
+          }}
+          onBlur={() => {
+            if (settings.enabled && link.trim() !== (settings.review_link ?? "")) {
+              onSave({ enabled: true, review_link: link.trim() || null });
+            }
+          }}
+          placeholder="Your Google or Yelp review link"
+          className="flex-1 rounded-xl border px-3.5 py-2.5 text-sm"
+          style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--ink-strong)" }}
+        />
+      </div>
+      {linkError && (
+        <p className="mt-1.5 text-[13px]" style={{ color: "#A23B1E" }}>{linkError}</p>
+      )}
+
+      {settings.n8n_base_url && (
+        <div className="mt-4 flex items-center gap-4 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+          <a
+            href={`${settings.n8n_base_url}/home/workflows`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[13px] font-semibold underline"
+            style={{ color: "var(--ink-strong)" }}
+          >
+            Edit workflow in n8n ↗
+          </a>
+          <button
+            onClick={resetWorkflow}
+            disabled={resetting}
+            className="text-[13px] font-semibold underline disabled:opacity-50"
+            style={{ color: "var(--muted)" }}
+          >
+            {resetting ? "Resetting…" : "Reset workflow to default"}
+          </button>
+        </div>
+      )}
+      {resetMsg && (
+        <p className="mt-1.5 text-[13px]" style={{ color: "var(--muted)" }}>{resetMsg}</p>
+      )}
     </div>
   );
 }

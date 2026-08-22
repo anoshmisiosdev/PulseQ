@@ -36,6 +36,12 @@ All four go through `app/services/n8n.py` (best-effort, never blocks the
 caller) and skip anyone with `do_not_contact` set where the payload is
 customer-specific.
 
+`recovery-review-request.json` is also gated per-business: it only fires when
+the owner has flipped "Ask for a review after a win-back" on and saved a
+review link, in the Automations tab. The workflow reads `{{ $json.body.
+review_link }}` / `business_name` from the payload rather than a hardcoded
+string — one shared workflow serving every tenant, not one per business.
+
 Each imported workflow ends in a "Post to Slack" or "Send email" node with a
 comment saying **configure credentials** — open it and point it at your own
 Slack app / SMTP account. Two things intentionally *not* built:
@@ -49,6 +55,20 @@ Slack app / SMTP account. Two things intentionally *not* built:
   ships a single `band == high` IF node as a starting point — the actual
   point of this workflow is that *you* build the multi-condition logic Pulse's
   one-band-one-channel `AutomationRule` can't express, in n8n's UI.
+
+## Edit / reset the recovery workflow from the app
+
+The Automations tab's review-request card shows an **"Edit workflow in n8n"**
+link and a **"Reset workflow to default"** button once `N8N_BASE_URL` and
+`N8N_API_KEY` are set in `.env` (both hidden if unset). The API key comes from
+n8n's own UI: **Settings → n8n API → Create an API key**.
+
+Reset calls n8n's REST API (`PUT /api/v1/workflows/{id}`) to overwrite the
+**"Pulse — post-recovery review request"** workflow's nodes/connections with
+`recovery-review-request.json` from this directory — the escape hatch for "I
+broke it messing with the n8n editor." It doesn't touch SMTP credentials
+(those live on the node, not in the JSON) and it only works from a local
+checkout, since that's where the template file lives.
 
 ## For production
 

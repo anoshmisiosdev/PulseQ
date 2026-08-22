@@ -132,6 +132,23 @@ class AutomationRuleOut(BaseModel):
     created_at: str
 
 
+class ReviewRequestSettingsIn(BaseModel):
+    enabled: bool
+    review_link: str | None = None
+
+
+class ReviewRequestSettingsOut(BaseModel):
+    enabled: bool
+    review_link: str | None
+    # Empty when n8n admin access isn't configured — frontend hides the
+    # edit/reset buttons in that case rather than showing ones that 422.
+    n8n_base_url: str
+
+
+class ResetWorkflowOut(BaseModel):
+    workflow_url: str
+
+
 class CampaignSendOut(BaseModel):
     id: str
     customer_id: str

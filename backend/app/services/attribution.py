@@ -276,13 +276,16 @@ async def detect_recoveries(
         if customer is not None:
             customer.recovered = True
             # Same contactability guarantee as any other outreach: n8n never
-            # hears about someone who opted out.
-            if not customer.do_not_contact:
+            # hears about someone who opted out. Also owner opt-in — no
+            # review_link means there's nothing for the workflow to send.
+            if not customer.do_not_contact and biz.review_request_enabled and biz.review_link:
                 await n8n.notify(
                     settings.n8n_recovery_webhook_url,
                     "recovery.attributed",
                     {
                         "business_id": business_id,
+                        "business_name": biz.name,
+                        "review_link": biz.review_link,
                         "customer_id": match.customer_id,
                         "customer_name": customer.first_name,
                         "email": customer.email,
