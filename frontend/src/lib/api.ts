@@ -178,6 +178,9 @@ export interface CampaignSend {
   subject: string | null;
   body: string;
   status: CampaignSendStatus;
+  /** "suggested" = no AI copy yet, needs a body (and subject for email)
+   * before it can be approved. "claude" / "fallback" already has one. */
+  generated_by: string;
   sent_at: string | null;
   failure_reason: string | null;
   created_at: string;
@@ -1029,10 +1032,17 @@ export const api = {
     return getJson<CampaignSend[]>(`/api/automations/sends?limit=${limit}`);
   },
 
-  async approveSend(id: string): Promise<CampaignSend> {
+  /** `override` is required for a "suggest"-mode send (empty body) —
+   * ignored otherwise, an already-drafted send can't be silently rewritten
+   * through this endpoint. */
+  async approveSend(
+    id: string,
+    override?: { subject?: string; body?: string }
+  ): Promise<CampaignSend> {
     const res = await fetch(`${BASE}/api/automations/sends/${id}/approve`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(override ?? {}),
     });
     return asJson<CampaignSend>(res);
   },

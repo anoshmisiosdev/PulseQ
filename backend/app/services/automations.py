@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.campaigns.generator import CampaignContext, generate_campaigns_batch
+from app.campaigns.generator import CampaignContext, GeneratedCopy, generate_campaigns_batch
 from app.core.config import settings
 from app.core.security import encrypt_token
 from app.models import AutomationRule, Business, Campaign, CampaignSend, Customer, EngagementEvent
@@ -151,7 +151,7 @@ async def dispatch_automations(
         # below is batched: it's collected here and sent as one request for
         # every customer this rule will actually message, instead of one
         # request per customer.
-        eligible: list[tuple[Customer, CampaignContext]] = []
+        eligible: list[tuple[Customer, CampaignContext | None]] = []
         for row_id, s in scored_by_row_id.items():
             if s.result.band != rule.trigger_band:
                 continue
@@ -183,6 +183,12 @@ async def dispatch_automations(
                 summary.skip("quiet_hours")
                 continue
 
+            if rule.mode == "suggest":
+                # A suggestion just flags who to contact — no AI copy, so skip
+                # the RAG lookup and context build that only feed generation.
+                eligible.append((customer, None))
+                continue
+
             name = f"{s.customer.first_name or ''} {s.customer.last_name or ''}".strip() or "there"
             knowledge = await search_knowledge(
                 db,
@@ -210,7 +216,12 @@ async def dispatch_automations(
         if not eligible:
             continue
 
-        copies = await generate_campaigns_batch([ctx for _, ctx in eligible])
+        if rule.mode == "suggest":
+            # Empty body/subject — the owner writes their own message before
+            # this can send (see the approve endpoint's body/subject override).
+            copies = [GeneratedCopy(body="", generated_by="suggested") for _ in eligible]
+        else:
+            copies = await generate_campaigns_batch([ctx for _, ctx in eligible])
 
         for (customer, _ctx), copy in zip(eligible, copies, strict=True):
             campaign = await _get_or_create_campaign(db, rule)

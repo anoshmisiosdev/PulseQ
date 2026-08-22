@@ -69,10 +69,10 @@ export default function Automations() {
     }
   };
 
-  const approve = async (send: CampaignSend) => {
+  const approve = async (send: CampaignSend, override?: { subject?: string; body?: string }) => {
     setSends((prev) => prev.map((s) => (s.id === send.id ? { ...s, status: "sent" } : s)));
     try {
-      const updated = await api.approveSend(send.id);
+      const updated = await api.approveSend(send.id, override);
       setSends((prev) => prev.map((s) => (s.id === send.id ? updated : s)));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't send — check quiet hours");
@@ -179,7 +179,11 @@ export default function Automations() {
             </p>
           )}
           {sends.map((s) => (
-            <FeedRow key={s.id} send={s} onApprove={() => approve(s)} />
+            <FeedRow
+              key={s.id}
+              send={s}
+              onApprove={(override) => approve(s, override)}
+            />
           ))}
         </div>
       </div>
@@ -366,45 +370,106 @@ function RuleCard({ rule, onMode, onToggle, onDelete }: {
   );
 }
 
-function FeedRow({ send, onApprove }: { send: CampaignSend; onApprove: () => void }) {
+function FeedRow({
+  send,
+  onApprove,
+}: {
+  send: CampaignSend;
+  onApprove: (override?: { subject?: string; body?: string }) => void;
+}) {
+  const isSuggestion = send.generated_by === "suggested";
   const status = {
     sent: { text: `Sent win-back ${send.channel === "sms" ? "text" : "email"}`, color: "#4F7A40", dot: "#5C8A4A" },
     delivered: { text: `Delivered win-back ${send.channel === "sms" ? "text" : "email"}`, color: "#4F7A40", dot: "#5C8A4A" },
-    pending: { text: "Drafted — awaiting approval", color: "#C0632F", dot: "#C0632F" },
+    pending: {
+      text: isSuggestion ? "Flagged — write your own message" : "Drafted — awaiting approval",
+      color: "#C0632F",
+      dot: "#C0632F",
+    },
     approved: { text: "Approved — sending", color: "#C0632F", dot: "#C0632F" },
     failed: { text: `Failed: ${send.failure_reason ?? "unknown error"}`, color: "#A23B1E", dot: "#A23B1E" },
     skipped: { text: "Skipped", color: "#A58C74", dot: "#A58C74" },
   }[send.status];
 
+  const isDraftingSuggestion = isSuggestion && send.status === "pending";
+
   return (
-    <div className="flex items-center gap-3.5 border-b px-6 py-4" style={{ borderColor: "var(--border-soft)" }}>
-      <span className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: status.dot }} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[14.5px]">
-          <b style={{ color: status.color, fontWeight: 700 }}>{status.text}</b>{" "}
-          <span style={{ color: "#6B5647" }}>to {send.customer_name}</span>
-        </p>
-        <p className="mt-0.5 truncate text-[12.5px]" style={{ color: "var(--muted-2)" }}>{send.body}</p>
-        {(send.opened || send.clicked || send.replied) && (
-          <div className="mt-1 flex gap-1.5">
-            {send.replied && <EngagementBadge label="Replied" color="#4F7A40" />}
-            {send.clicked && <EngagementBadge label="Clicked" color="#2E6B9E" />}
-            {send.opened && <EngagementBadge label="Opened" color="#8A7565" />}
-          </div>
+    <div className="border-b px-6 py-4" style={{ borderColor: "var(--border-soft)" }}>
+      <div className="flex items-center gap-3.5">
+        <span className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: status.dot }} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[14.5px]">
+            <b style={{ color: status.color, fontWeight: 700 }}>{status.text}</b>{" "}
+            <span style={{ color: "#6B5647" }}>to {send.customer_name}</span>
+          </p>
+          {!isDraftingSuggestion && (
+            <p className="mt-0.5 truncate text-[12.5px]" style={{ color: "var(--muted-2)" }}>{send.body}</p>
+          )}
+          {(send.opened || send.clicked || send.replied) && (
+            <div className="mt-1 flex gap-1.5">
+              {send.replied && <EngagementBadge label="Replied" color="#4F7A40" />}
+              {send.clicked && <EngagementBadge label="Clicked" color="#2E6B9E" />}
+              {send.opened && <EngagementBadge label="Opened" color="#8A7565" />}
+            </div>
+          )}
+        </div>
+        {send.status === "pending" && !isSuggestion && (
+          <button
+            onClick={() => onApprove()}
+            className="shrink-0 rounded-full px-4 py-[7px] text-[13px] font-semibold text-white transition hover:brightness-95"
+            style={{ background: "var(--accent)" }}
+          >
+            Approve
+          </button>
         )}
+        <span className="min-w-[78px] shrink-0 text-right text-[12.5px]" style={{ color: "var(--muted-2)" }}>
+          {new Date(send.created_at).toLocaleDateString()}
+        </span>
       </div>
-      {send.status === "pending" && (
-        <button
-          onClick={onApprove}
-          className="shrink-0 rounded-full px-4 py-[7px] text-[13px] font-semibold text-white transition hover:brightness-95"
-          style={{ background: "var(--accent)" }}
-        >
-          Approve
-        </button>
+      {isDraftingSuggestion && <SuggestionComposer send={send} onSend={onApprove} />}
+    </div>
+  );
+}
+
+function SuggestionComposer({
+  send,
+  onSend,
+}: {
+  send: CampaignSend;
+  onSend: (override: { subject?: string; body: string }) => void;
+}) {
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+
+  const canSend = body.trim().length > 0 && (send.channel !== "email" || subject.trim().length > 0);
+
+  return (
+    <div className="mt-3 space-y-2 pl-[22px]">
+      {send.channel === "email" && (
+        <input
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="Subject"
+          className="w-full rounded-xl border bg-white/70 px-3 py-2 text-sm outline-none"
+          style={{ borderColor: "var(--border)", color: "var(--ink)" }}
+        />
       )}
-      <span className="min-w-[78px] shrink-0 text-right text-[12.5px]" style={{ color: "var(--muted-2)" }}>
-        {new Date(send.created_at).toLocaleDateString()}
-      </span>
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder={`Write your ${send.channel === "sms" ? "text" : "email"} to ${send.customer_name}…`}
+        rows={3}
+        className="w-full rounded-xl border bg-white/70 px-3 py-2 text-sm outline-none"
+        style={{ borderColor: "var(--border)", color: "var(--ink)" }}
+      />
+      <button
+        onClick={() => onSend({ subject: subject.trim() || undefined, body: body.trim() })}
+        disabled={!canSend}
+        className="rounded-full px-4 py-[7px] text-[13px] font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
+        style={{ background: "var(--accent)" }}
+      >
+        Send
+      </button>
     </div>
   );
 }

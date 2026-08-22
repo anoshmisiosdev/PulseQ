@@ -141,12 +141,24 @@ class CampaignSendOut(BaseModel):
     subject: str | None
     body: str
     status: str
+    # "suggested" (empty body, owner writes their own — see SendApproveIn)
+    # vs "claude" / "fallback" (already has AI-drafted or static copy).
+    generated_by: str
     sent_at: str | None
     failure_reason: str | None
     created_at: str
     opened: bool = False
     clicked: bool = False
     replied: bool = False
+
+
+class SendApproveIn(BaseModel):
+    """Optional owner-written override, required for a 'suggest'-mode send
+    (empty body) and ignored otherwise — approving an already-drafted send
+    doesn't let you silently rewrite what the customer sees."""
+
+    subject: str | None = None
+    body: str | None = None
 
 
 class DispatchSummaryOut(BaseModel):

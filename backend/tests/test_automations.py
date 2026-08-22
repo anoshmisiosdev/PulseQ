@@ -112,3 +112,41 @@ async def test_dispatch_ignores_disabled_rules(db):
 
     assert summary.rules_evaluated == 0
     assert summary.sends_created == 0
+
+
+async def test_suggest_mode_creates_empty_sends_without_generating_copy(db, monkeypatch):
+    """A suggestion just flags who to contact — no AI-drafted copy, and
+    critically no LLM call at all (that's the whole point: suggest mode
+    shouldn't spend tokens generating text the owner is about to replace)."""
+
+    async def _fail(*args, **kwargs):
+        raise AssertionError("generate_campaigns_batch should not be called for suggest mode")
+
+    monkeypatch.setattr(automations, "generate_campaigns_batch", _fail)
+
+    await _seed(db)
+    await _make_rule(db, mode="suggest")
+
+    summary = await automations.dispatch_automations(db, BUSINESS_ID, now=NOW)
+    await db.commit()
+
+    assert summary.sends_created > 0
+    sends = (await db.execute(select(CampaignSend))).scalars().all()
+    assert all(s.status == "pending" for s in sends)
+    assert all(s.body == "" for s in sends)
+    assert all(s.generated_by == "suggested" for s in sends)
+
+
+async def test_approve_mode_still_generates_copy(db):
+    """Same seed/rule shape as suggest mode, minus the override — approve
+    mode is unaffected and still drafts real content."""
+    await _seed(db)
+    await _make_rule(db, mode="approve")
+
+    summary = await automations.dispatch_automations(db, BUSINESS_ID, now=NOW)
+    await db.commit()
+
+    assert summary.sends_created > 0
+    sends = (await db.execute(select(CampaignSend))).scalars().all()
+    assert all(s.body for s in sends)
+    assert all(s.generated_by != "suggested" for s in sends)

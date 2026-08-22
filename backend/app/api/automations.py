@@ -29,6 +29,7 @@ from app.schemas.api import (
     CampaignSendOut,
     DispatchSummaryOut,
     RecoverySummaryOut,
+    SendApproveIn,
 )
 from app.services.attribution import detect_recoveries
 from app.services.automations import attempt_send, dispatch_automations
@@ -71,6 +72,7 @@ def _send_out(
         subject=send.subject,
         body=send.body,
         status=send.status,
+        generated_by=send.generated_by,
         sent_at=send.sent_at.isoformat() if send.sent_at else None,
         failure_reason=send.failure_reason,
         created_at=send.created_at.isoformat(),
@@ -191,13 +193,33 @@ async def list_sends(
 
 @router.post("/sends/{send_id}/approve", response_model=CampaignSendOut)
 async def approve_send(
-    send_id: str, db: AsyncSession = Depends(get_db), user: CurrentUser = CurrentUserDep
+    send_id: str,
+    payload: SendApproveIn | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = CurrentUserDep,
 ) -> CampaignSendOut:
     send = await db.get(CampaignSend, _uuid(send_id))
     if send is None or send.business_id != _uuid(user.business_id):
         raise HTTPException(404, "Not found")
     if send.status != "pending":
         raise HTTPException(422, f"Send is '{send.status}', not pending")
+
+    if not send.body:
+        # A "suggest"-mode send has no AI-drafted copy — the owner has to
+        # write one before it can go out. An already-drafted send ignores
+        # the payload; approving it isn't a chance to silently rewrite it.
+        body = ((payload.body if payload else "") or "").strip()
+        if not body:
+            raise HTTPException(
+                422,
+                "This suggestion needs a message before it can be sent — write one and try again.",
+            )
+        send.body = body
+        if send.channel == "email":
+            subject = ((payload.subject if payload else "") or "").strip()
+            if not subject:
+                raise HTTPException(422, "Email suggestions need a subject line too.")
+            send.subject = subject
 
     customer = await db.get(Customer, send.customer_id)
     biz = await db.get(Business, send.business_id)
