@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Spectral:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Newsreader:ital,wght@0,300;0,400;1,300;1,400&family=Schibsted+Grotesk:wght@400;500;600&family=Spectral:wght@500;600;700&display=swap');
 @import 'tailwindcss';
 
 /* ===== Design System: Coffeehouse Editorial — Pulse ===== */
@@ -33,6 +33,31 @@
   --font-display: 'Spectral', Georgia, serif;
   --font-body: 'Hanken Grotesk', system-ui, sans-serif;
   --radius: 18px;
+
+  /* ===== Landing page palette (docs/PORT-NOTES.md §1) =====
+     The marketing page runs a slightly warmer palette than the app: its
+     `cream` is #F4ECE0, not the app's --bg-page. Aliased to existing vars
+     wherever the value is already identical, so there is one definition per
+     colour. `cream` and `ink` are baked into the logo lockups — drift either
+     and the lockups show a seam. */
+  --cream: var(--cream-text);          /* #F4ECE0 — page bg, text on dark */
+  --cream-alt: #EFE3D1;                /* alternating section bands */
+  /* The reference calls #6E5B4D "muted", but this file's --muted is already
+     #8A7565 and the app depends on it. Distinct name, same role: body copy. */
+  --muted-body: #6E5B4D;
+  --card: #FDF8F0;                     /* soft cards, hero dashboard */
+  --hard-card: #FFFFFF;                /* hard-shadow cards, pinned scene only */
+  --faint: var(--muted-2);             /* #A58C74 — labels, meta, eyebrows */
+  --line: #E3D5C0;                     /* hairlines, borders */
+  --line-soft: #EDE0CC;                /* dividers inside cards */
+  --terracotta: var(--accent);         /* #B4532A — the one accent */
+  --terracotta-lt: #E09A5F;            /* "Most popular" on dark */
+  /* The demo dial's "At risk" band. Quoted in PORT-NOTES §4 but missing from
+     its own token table — it is a real colour on the page, so it gets one. */
+  --terracotta-mid: #C0632F;
+  --green: var(--sage-text);           /* #4F7A40 — recovered / healthy only */
+  --font-grotesk: 'Schibsted Grotesk', system-ui, sans-serif;
+  --font-serif: 'Newsreader', Georgia, serif;
 }
 
 /* Expose the design tokens as Tailwind utilities (text-ink, bg-surface,
@@ -58,7 +83,20 @@
   --color-sage: var(--sage);
   --color-sage-text: var(--sage-text);
   --color-cream-text: var(--cream-text);
+  --color-cream: var(--cream);
+  --color-cream-alt: var(--cream-alt);
+  --color-card: var(--card);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-terracotta: var(--terracotta);
+  --color-terracotta-lt: var(--terracotta-lt);
+  --color-terracotta-mid: var(--terracotta-mid);
+  --color-muted-body: var(--muted-body);
+  --color-green: var(--green);
   --font-display: var(--font-display);
+  --font-grotesk: var(--font-grotesk);
+  --font-serif: var(--font-serif);
 }
 
 body {
