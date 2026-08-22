@@ -11,8 +11,10 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models import Campaign, CampaignSend, Customer, RecoveryAttribution, Transaction, Visit
 from app.services import ingest
+from app.services import n8n as n8n_service
 from app.services.attribution import (
     ReturnEvent,
     SendRecord,
@@ -189,6 +191,65 @@ async def test_detect_recoveries_writes_an_attribution_and_flags_the_customer(db
     assert rows[0].campaign_send_id == send.id
     assert float(rows[0].estimated_value) == 64.0
     assert (await db.get(Customer, customer.id)).recovered is True
+
+
+async def test_detect_recoveries_notifies_n8n_unless_opted_out(db, monkeypatch):
+    calls = []
+
+    async def _fake_notify(webhook_url, event, payload):
+        calls.append((webhook_url, event, payload))
+        return True
+
+    monkeypatch.setattr(n8n_service, "notify", _fake_notify)
+    monkeypatch.setattr(settings, "n8n_recovery_webhook_url", "https://n8n.example/hook")
+
+    customer = await _seed_business(db)
+    await _seed_send(db, customer, days_ago=10)
+    db.add(
+        Visit(
+            business_id=ingest._uuid(BUSINESS_ID),
+            customer_id=customer.id,
+            source="csv",
+            occurred_at=datetime.now() - timedelta(days=3),
+        )
+    )
+    await db.flush()
+
+    await detect_recoveries(db, BUSINESS_ID)
+
+    assert len(calls) == 1
+    webhook_url, event, payload = calls[0]
+    assert webhook_url == "https://n8n.example/hook"
+    assert event == "recovery.attributed"
+    assert payload["customer_id"] == str(customer.id)
+
+
+async def test_detect_recoveries_skips_n8n_for_do_not_contact(db, monkeypatch):
+    calls = []
+
+    async def _fake_notify(webhook_url, event, payload):
+        calls.append((webhook_url, event, payload))
+        return True
+
+    monkeypatch.setattr(n8n_service, "notify", _fake_notify)
+    monkeypatch.setattr(settings, "n8n_recovery_webhook_url", "https://n8n.example/hook")
+
+    customer = await _seed_business(db)
+    customer.do_not_contact = True
+    await _seed_send(db, customer, days_ago=10)
+    db.add(
+        Visit(
+            business_id=ingest._uuid(BUSINESS_ID),
+            customer_id=customer.id,
+            source="csv",
+            occurred_at=datetime.now() - timedelta(days=3),
+        )
+    )
+    await db.flush()
+
+    await detect_recoveries(db, BUSINESS_ID)
+
+    assert calls == []
 
 
 async def test_detect_recoveries_is_idempotent(db):

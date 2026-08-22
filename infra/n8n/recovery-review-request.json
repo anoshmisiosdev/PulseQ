@@ -1,0 +1,52 @@
+{
+  "name": "Pulse — post-recovery review request",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pulse-recovery",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Pulse: recovery.attributed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "pulse-recovery"
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "days"
+      },
+      "id": "wait",
+      "name": "Wait 2 days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "fromEmail": "hello@yourbusiness.example",
+        "toEmail": "={{ $json.body.email }}",
+        "subject": "Glad you're back, {{ $json.body.customer_name }}!",
+        "text": "Hi {{ $json.body.customer_name }},\n\nThanks for coming back — we'd love a quick review if you have a minute:\n\n[your Google/Yelp review link here]\n\n— The team",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send review request (configure SMTP creds)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [440, 0]
+    }
+  ],
+  "connections": {
+    "Pulse: recovery.attributed": {
+      "main": [[{ "node": "Wait 2 days", "type": "main", "index": 0 }]]
+    },
+    "Wait 2 days": {
+      "main": [[{ "node": "Send review request (configure SMTP creds)", "type": "main", "index": 0 }]]
+    }
+  }
+}

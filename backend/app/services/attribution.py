@@ -39,6 +39,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models import (
     Business,
     CampaignSend,
@@ -48,6 +49,7 @@ from app.models import (
     Visit,
 )
 from app.scoring.config import get_vertical_config
+from app.services import n8n
 from app.services.ingest import _uuid
 
 logger = logging.getLogger("pulse.attribution")
@@ -273,6 +275,21 @@ async def detect_recoveries(
         customer = await db.get(Customer, _uuid(match.customer_id))
         if customer is not None:
             customer.recovered = True
+            # Same contactability guarantee as any other outreach: n8n never
+            # hears about someone who opted out.
+            if not customer.do_not_contact:
+                await n8n.notify(
+                    settings.n8n_recovery_webhook_url,
+                    "recovery.attributed",
+                    {
+                        "business_id": bid,
+                        "customer_id": match.customer_id,
+                        "customer_name": customer.first_name,
+                        "email": customer.email,
+                        "phone": customer.phone,
+                        "revenue_recovered": round(match.revenue_recovered, 2),
+                    },
+                )
         summary.recoveries_found += 1
         summary.revenue_recovered += match.revenue_recovered
 
