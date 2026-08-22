@@ -927,6 +927,17 @@ async def test_google_geocoder_success_zero_results_and_missing_key():
         await GoogleGeocodingClient(api_key="").geocode("Fremont")
 
 
+async def test_google_geocoder_defaults_to_the_server_key_in_production(monkeypatch):
+    # Regression: this used to fall back to settings.google_maps_api_key (the
+    # browser/referrer key), which is never wired into production and would
+    # 503 every geocode call regardless of GOOGLE_MAPS_SERVER_API_KEY being
+    # set. Must go through effective_google_maps_api_key like google_places.py.
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "google_maps_server_api_key", "server-key")
+    monkeypatch.setattr(settings, "google_maps_api_key", "browser-key")
+    assert GoogleGeocodingClient().api_key == "server-key"
+
+
 async def test_google_places_can_optionally_enrich_canonical_competitor(monkeypatch):
     monkeypatch.setattr(settings, "pricing_google_place_details_enabled", True)
     async def handler(request: httpx.Request):

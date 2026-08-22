@@ -33,7 +33,7 @@ class GoogleGeocodingClient:
         api_key: str | None = None,
         http_client: httpx.AsyncClient | None = None,
     ):
-        self.api_key = api_key if api_key is not None else settings.google_maps_api_key
+        self.api_key = api_key if api_key is not None else settings.effective_google_maps_api_key
         self.http_client = http_client
 
     async def geocode(self, address: str) -> Coordinates | None:
