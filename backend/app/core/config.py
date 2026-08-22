@@ -159,6 +159,11 @@ class Settings(BaseSettings):
     bedrock_region: str = "us-east-1"
     bedrock_embedding_model: str = "cohere.embed-v4:0"
     embedding_dimensions: int = 1536
+    # Cross-region inference profile, not the bare model id: on-demand throughput
+    # for Claude on Bedrock is provisioned per inference profile, and the
+    # pulse-apprunner-instance role's policy is scoped to this ARN + the
+    # foundation-model ARN it routes to (see infra/aws/README.md).
+    bedrock_chat_model: str = "us.anthropic.claude-sonnet-4-6"
 
     @property
     def rag_configured(self) -> bool:

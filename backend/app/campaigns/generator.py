@@ -137,3 +137,135 @@ async def generate_campaign(ctx: CampaignContext) -> GeneratedCopy:
             logger.warning("generation attempt %s failed: %s", attempt, exc)
 
     return _fallback(ctx)
+
+
+# Caps prompt/response size for one call: 6 customers' worth of context stays
+# comfortably inside max_tokens without risking a truncated JSON array. A
+# larger eligible list is chunked into multiple calls of this size.
+MAX_BATCH_SIZE = 6
+
+
+def _build_batch_prompt(contexts: list[CampaignContext]) -> tuple[str, str]:
+    """Callers must batch same-business, same-channel contexts only (true of
+    every current caller — one automation rule's eligible customers) — the
+    shared system prompt below is built from contexts[0] alone."""
+    first = contexts[0]
+    if first.channel == "sms":
+        item_shape = '{"id": 0, "body": "..."}'
+        rules = (
+            f"- SMS only, {SMS_MAX_CHARS} characters max per message.\n"
+            "- Each message ends with an opt-out cue (e.g. 'Reply STOP to opt out').\n"
+        )
+    else:
+        item_shape = '{"id": 0, "subject": "...", "body": "..."}'
+        rules = "- Each email ends with a clear unsubscribe line.\n"
+
+    system = (
+        f"You write win-back messages for {first.business_name}, a {first.business_type}. "
+        f"Tone: {first.tone}. Never fabricate facts, discounts, or claims not provided. "
+        "You'll get several customers in one request — write one message per customer, "
+        "each personal to that customer, not a form letter reused verbatim. "
+        f'Respond with STRICT JSON only, exactly this shape: {{"items": [{item_shape}, ...]}}, '
+        'one item per customer in the same order given, each tagged with its "id". '
+        "No markdown, no prose."
+    )
+
+    blocks = []
+    for i, ctx in enumerate(contexts):
+        reasons = "; ".join(ctx.risk_reasons) or "no specific signal"
+        incentive = ctx.incentive or "no specific offer"
+        knowledge_block = ""
+        if ctx.knowledge_snippets:
+            bullets = "\n".join(f"    - {s}" for s in ctx.knowledge_snippets)
+            knowledge_block = f"\n  About this business:\n{bullets}"
+        blocks.append(
+            f"id {i}:\n"
+            f"  Customer: {ctx.customer_name}\n"
+            f"  Why they're at risk: {reasons}\n"
+            f"  History: {ctx.history_summary or 'n/a'}\n"
+            f"  Incentive to offer: {incentive}"
+            f"{knowledge_block}"
+        )
+    user = "\n\n".join(blocks) + f"\n\nConstraints:\n{rules}\nWrite all messages now as JSON."
+    return system, user
+
+
+def _parse_batch_json(raw: str, channel: str, n: int) -> list[GeneratedCopy | None]:
+    """Best-effort parse of a batch response: one slot per expected item, None
+    where an item was missing or malformed. A partial batch isn't discarded —
+    the caller fills in only the missing slots with individual calls."""
+    data = extract_json_object(raw)
+    items = data.get("items")
+    if not isinstance(items, list):
+        raise ValueError("batch output missing 'items' array")
+
+    out: list[GeneratedCopy | None] = [None] * n
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        idx = item.get("id")
+        if not isinstance(idx, int) or not (0 <= idx < n):
+            continue
+        body = (item.get("body") or "").strip()
+        if not body:
+            continue
+        if channel == "sms":
+            out[idx] = GeneratedCopy(body=body[:SMS_MAX_CHARS], subject=None)
+            continue
+        subject = (item.get("subject") or "").strip()
+        if not subject:
+            continue
+        out[idx] = GeneratedCopy(body=body, subject=subject)
+    return out
+
+
+async def _generate_batch_chunk(contexts: list[CampaignContext]) -> list[GeneratedCopy | None]:
+    if not settings.llm_configured:
+        return [None] * len(contexts)
+
+    system, user = _build_batch_prompt(contexts)
+    model = active_model()
+    channel = contexts[0].channel
+
+    for attempt in (1, 2):  # generate, then one retry on parse failure — same shape as above
+        try:
+            raw = await complete_text(system, user, max_tokens=700 * len(contexts))
+            results = _parse_batch_json(raw, channel, len(contexts))
+            for r in results:
+                if r is not None:
+                    r.model = model
+            logger.info(
+                "batch campaign generated",
+                extra={"channel": channel, "count": len(contexts), "attempt": attempt},
+            )
+            return results
+        except Exception as exc:  # network, parse, or API error — caller falls back per item
+            logger.warning("batch generation attempt %s failed: %s", attempt, exc)
+
+    return [None] * len(contexts)
+
+
+async def generate_campaigns_batch(contexts: list[CampaignContext]) -> list[GeneratedCopy]:
+    """Generate copy for several customers in as few LLM calls as possible —
+    one shared system prompt instead of one per customer, cutting the
+    repeated-context token cost roughly N-fold for a same-business,
+    same-channel batch (e.g. one automation rule's eligible customers).
+
+    Never worse than calling generate_campaign per customer: a chunk that
+    doesn't parse cleanly falls back to generating those customers
+    individually, so a bad batch response can't corrupt or drop a send that
+    would've worked on its own. Order of the input list is preserved."""
+    if not contexts:
+        return []
+    if len(contexts) == 1:
+        return [await generate_campaign(contexts[0])]
+
+    results: list[GeneratedCopy | None] = [None] * len(contexts)
+    for start in range(0, len(contexts), MAX_BATCH_SIZE):
+        chunk = contexts[start : start + MAX_BATCH_SIZE]
+        results[start : start + len(chunk)] = await _generate_batch_chunk(chunk)
+
+    for i, r in enumerate(results):
+        if r is None:
+            results[i] = await generate_campaign(contexts[i])
+    return results  # type: ignore[return-value]  # every slot filled by the loop above

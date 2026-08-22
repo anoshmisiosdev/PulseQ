@@ -114,13 +114,16 @@ fastapi_app.include_router(visitors.router, prefix=API_PREFIX)
 # Signed Discord HTTP interactions for private /churnary commands.
 fastapi_app.include_router(discord_bot.router, prefix=API_PREFIX)
 
-# Rate limiting: protect auth (brute-force) and competitor research (expensive LLM).
+# Rate limiting: protect auth (brute-force) and expensive LLM endpoints (cost abuse).
 # Applied to the inner app so CORS-wrapped 429s still get Access-Control-Allow-Origin.
 fastapi_app.add_middleware(
     RateLimitMiddleware,
     rules={
         "/api/auth": (5, 60),               # 5 per 60s — brute-force protection
         "/api/competitor-prices": (10, 60), # v2 batch queue; tenant quota is authoritative
+        "/api/campaigns/generate": (10, 60), # direct LLM call per request
+        "/api/social/campaigns": (20, 60),  # covers list/create too; /generate is the LLM call
+        "/api/social/inbox": (20, 60),      # covers list/briefing too; /suggest is the LLM call
         "/api/analytics": (60, 60),         # bounded public landing-page metrics
         "/api/waitlist": (5, 60),           # 5 per 60s — unauthenticated public write
         "/api/integrations/webhooks": (240, 60), # signed Stripe/Square deliveries

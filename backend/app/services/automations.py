@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.campaigns.generator import CampaignContext, generate_campaign
+from app.campaigns.generator import CampaignContext, generate_campaigns_batch
 from app.core.config import settings
 from app.core.security import encrypt_token
 from app.models import AutomationRule, Business, Campaign, CampaignSend, Customer, EngagementEvent
@@ -145,6 +145,13 @@ async def dispatch_automations(
         summary.rules_evaluated += 1
         quiet = rule.channel == "sms" and is_quiet_hours(biz.timezone, now)
 
+        # Eligibility (band match, contact permission, cooldown, quiet hours)
+        # stays per-customer — each check reads the DB or depends on that one
+        # customer's state and can't be batched. Only the generation call
+        # below is batched: it's collected here and sent as one request for
+        # every customer this rule will actually message, instead of one
+        # request per customer.
+        eligible: list[tuple[Customer, CampaignContext]] = []
         for row_id, s in scored_by_row_id.items():
             if s.result.band != rule.trigger_band:
                 continue
@@ -198,8 +205,14 @@ async def dispatch_automations(
                 knowledge_snippets=[row.content for row in knowledge],
                 unsubscribe_url=unsubscribe_url(business_id, str(customer.id)),
             )
-            copy = await generate_campaign(ctx)
+            eligible.append((customer, ctx))
 
+        if not eligible:
+            continue
+
+        copies = await generate_campaigns_batch([ctx for _, ctx in eligible])
+
+        for (customer, _ctx), copy in zip(eligible, copies, strict=True):
             campaign = await _get_or_create_campaign(db, rule)
             send = CampaignSend(
                 business_id=bid,
