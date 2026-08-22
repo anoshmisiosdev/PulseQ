@@ -1278,8 +1278,11 @@ const LP_CSS = `
   text-wrap: pretty;
   overflow-x: clip;
 }
-.chn a { color: var(--ink); text-decoration: none; }
-.chn a:hover { color: var(--terracotta); }
+/* :where() keeps this at (0,1,0) so it cannot outrank the single-class link
+   rules below. Written as ".chn a" it was (0,1,1) and silently repainted
+   .chn-nav-signin, .chn-nav-brand and .chn-btn-solid to ink-on-ink. */
+.chn :where(a) { color: var(--ink); text-decoration: none; }
+.chn :where(a):hover { color: var(--terracotta); }
 .chn ::placeholder { color: var(--faint); }
 .chn input, .chn button, .chn select { font: inherit; color: inherit; }
 .chn :focus-visible { outline: 1.5px solid var(--terracotta); outline-offset: 3px; }
@@ -1313,10 +1316,14 @@ const LP_CSS = `
 .chn-nav-brand img, .chn-footer-brand img, .chn-flow-icon { border-radius: 23%; display: block; }
 .chn-nav-brand:hover { color: var(--cream); }
 .chn-nav-links { display: flex; gap: 30px; font-size: 14px; }
-.chn-nav-links a, .chn-nav-signin { color: color-mix(in srgb, var(--cream) 62%, transparent); }
-.chn-nav-links a:hover, .chn-nav-signin:hover { color: var(--cream); }
+.chn-nav-links a { color: color-mix(in srgb, var(--cream) 62%, transparent); }
+.chn-nav-links a:hover { color: var(--cream); }
 .chn-nav-actions { display: flex; align-items: center; justify-content: flex-end; gap: 20px; }
-.chn-nav-signin { font-size: 14px; }
+/* Sign in is an action, so it sits at full cream rather than the 62% used for
+   section links. Terracotta is the page accent but it is too dark to read on
+   the ink band, so the hover uses terracotta-lt, the on-dark accent. */
+.chn-nav-signin { font-size: 14px; font-weight: 500; color: var(--cream); }
+.chn-nav-signin:hover { color: var(--terracotta-lt); }
 .chn-nav-cta {
   padding: 9px 17px; border-radius: 999px;
   background: var(--cream); color: var(--ink); font-size: 14px;

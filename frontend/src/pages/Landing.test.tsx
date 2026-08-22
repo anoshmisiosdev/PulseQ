@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router-dom";
+import { StaticRouter } from "react-router-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Landing from "./Landing";
 
@@ -12,11 +12,13 @@ import Landing from "./Landing";
  */
 
 // The waitlist form links to /privacy, so the page needs router context.
+// StaticRouter rather than MemoryRouter: the latter calls useLayoutEffect,
+// which warns on every static render.
 const html = () =>
   renderToStaticMarkup(
-    <MemoryRouter>
+    <StaticRouter location="/">
       <Landing />
-    </MemoryRouter>
+    </StaticRouter>
   );
 
 afterEach(() => {
@@ -107,6 +109,25 @@ describe("Landing styling", () => {
     const hex = html().match(/#[0-9a-fA-F]{3,8}\b/g) ?? [];
     // url(%23g) in the grain data URI is escaped, so nothing should remain.
     expect(hex).toEqual([]);
+  });
+});
+
+describe("Landing link colours", () => {
+  // ".chn a" is (0,1,1) — a class plus an element — which outranks every
+  // single-class link rule and repainted Sign in, the "Churnary" wordmark and
+  // the hero CTA to ink-on-ink. :where() drops the base rule to (0,1,0) so the
+  // component classes win. Losing this makes text silently invisible.
+  it("keeps the base anchor rule at class-only specificity", () => {
+    const markup = html();
+    expect(markup).toContain(".chn :where(a) {");
+    expect(markup).not.toMatch(/(^|[^)])\.chn a \{/);
+  });
+
+  it("gives Sign in its own colour instead of the muted section-link grey", () => {
+    const markup = html();
+    expect(markup).toMatch(/\.chn-nav-signin \{[^}]*color: var\(--cream\)/);
+    // It must not fall back to the base ink, which is the nav band's own colour.
+    expect(markup).not.toMatch(/\.chn-nav-signin \{[^}]*color: var\(--ink\)/);
   });
 });
 
