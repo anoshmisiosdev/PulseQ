@@ -14,6 +14,8 @@ import {
   DIAL_RADIUS,
   driftReach,
   driftState,
+  flowLineOpacity,
+  flowPath,
   riskBand,
   riskScore,
   sceneProgress,
@@ -400,7 +402,12 @@ export default function Landing() {
     lines: HTMLElement[];
     reveals: HTMLElement[];
     tilt?: HTMLElement | null;
-  }>({ drifts: [], beats: [], signals: [], lines: [], reveals: [] });
+    flowSvg?: SVGSVGElement | null;
+    flowIcon?: HTMLElement | null;
+    flowLines: SVGPathElement[];
+  }>({ drifts: [], beats: [], signals: [], lines: [], reveals: [], flowLines: [] });
+  /** Last stage size the flow-line geometry was measured at. */
+  const flowSize = useRef("");
 
   /** Gather the nodes paint() drives. Re-run when the scene DOM swaps. */
   const collect = useCallback(() => {
@@ -419,6 +426,9 @@ export default function Landing() {
       lines: all("[data-line]"),
       reveals: all("[data-reveal]"),
       tilt: r.querySelector<HTMLElement>("[data-tilt]"),
+      flowSvg: r.querySelector<SVGSVGElement>("[data-flow-lines]"),
+      flowIcon: r.querySelector<HTMLElement>("[data-flow-icon]"),
+      flowLines: Array.from(r.querySelectorAll<SVGPathElement>("[data-flow-line]")),
     };
 
     // The grain is an inline feTurbulence data URI applied from JS: a bundler
@@ -432,6 +442,48 @@ export default function Landing() {
         `<rect width='180' height='180' filter='url(${hash}g)'/></svg>`;
       grain.style.backgroundImage = `url("data:image/svg+xml;utf8,${svg.replace(/#/g, "%23")}")`;
     }
+  }, []);
+
+  /**
+   * Measure the flow-line geometry in stage-local pixels.
+   *
+   * Uses offsetLeft/offsetTop rather than getBoundingClientRect because those
+   * ignore transforms — the cards are mid-drift for most of the scene, and
+   * their rects would give wherever they happen to be rather than where they
+   * come to rest. Called on mount and whenever the stage changes size, never
+   * per frame; the dash travel itself is a CSS animation.
+   */
+  const layoutFlowLines = useCallback(() => {
+    const { flowSvg, flowIcon, flowLines } = els.current;
+    const stage = flowSvg?.parentElement;
+    if (!flowSvg || !flowIcon || !stage || !flowLines.length) return;
+
+    const w = stage.offsetWidth;
+    const h = stage.offsetHeight;
+    if (!w || !h) return;
+    flowSvg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+
+    // The icon is centred on its offset position by translate(-50%, -50%), so
+    // its offset point is its visual centre, not its top-left corner.
+    const cx = flowIcon.offsetLeft;
+    const cy = flowIcon.offsetTop;
+    const edge = flowIcon.offsetWidth / 2;
+
+    flowLines.forEach((path) => {
+      const side = path.dataset.flowLine;
+      const card = stage.querySelector<HTMLElement>(
+        `[data-drift="${side}"][data-group="a"][data-i="${path.dataset.i}"]`
+      );
+      if (!card) return;
+      const cardY = card.offsetTop + card.offsetHeight / 2;
+      const from =
+        side === "left"
+          ? { x: card.offsetLeft + card.offsetWidth, y: cardY }
+          : { x: cx + edge, y: cy };
+      const to =
+        side === "left" ? { x: cx - edge, y: cy } : { x: card.offsetLeft, y: cardY };
+      path.setAttribute("d", flowPath(from, to));
+    });
   }, []);
 
   /**
@@ -470,7 +522,7 @@ export default function Landing() {
 
   /** One pass over every scroll-driven element on the page. */
   const paint = useCallback(() => {
-    const { nav, flow, wiki, drifts, beats, hint, signals, lines, reveals, tilt } =
+    const { nav, flow, wiki, drifts, beats, hint, signals, lines, reveals, tilt, flowLines } =
       els.current;
     const vh = window.innerHeight;
 
@@ -530,6 +582,23 @@ export default function Landing() {
         el.style.transform = `translateY(${((isA ? -(1 - visA) : 1 - visB) * 26).toFixed(1)}px)`;
       });
 
+      // Flow lines share beat A's easing, so a connector fades in as its own
+      // card lands. Re-measure only when the stage has actually resized.
+      const stage = flow.querySelector<HTMLElement>(".chn-flow-stage");
+      if (stage && flowLines.length) {
+        const size = `${stage.offsetWidth}x${stage.offsetHeight}`;
+        if (size !== flowSize.current) {
+          flowSize.current = size;
+          layoutFlowLines();
+        }
+        flowLines.forEach((path) => {
+          const side = path.dataset.flowLine === "left" ? -1 : 1;
+          const i = Number(path.dataset.i) || 0;
+          const { progress } = driftState(pa, i, side, reach, visA);
+          path.style.opacity = String(flowLineOpacity(progress, visA));
+        });
+      }
+
       if (hint) hint.style.opacity = String(clamp(1 - (p - 0.86) / 0.12, 0, 1));
     }
 
@@ -560,13 +629,14 @@ export default function Landing() {
         el.style.transform = on ? "translateY(0)" : "translateY(8px)";
       });
     }
-  }, [reduced]);
+  }, [reduced, layoutFlowLines]);
 
   useEffect(() => {
     collect();
     prime();
+    layoutFlowLines();
     paint();
-  }, [collect, prime, paint]);
+  }, [collect, prime, layoutFlowLines, paint]);
 
   useRafScroll(paint);
 
@@ -752,7 +822,37 @@ function FlowScene() {
           </div>
         </div>
 
-        <img className="chn-flow-icon" src={icon} alt="" aria-hidden="true" />
+        {/* Dashed connectors: inputs flow into the icon, outputs flow out of
+            it. Paths are computed in JS from measured layout, so with no
+            script they simply never draw — they are decorative. */}
+        <svg
+          className="chn-flow-lines"
+          data-flow-lines="1"
+          aria-hidden="true"
+          focusable="false"
+          preserveAspectRatio="none"
+        >
+          {FLOW_A.map((card, n) => {
+            const i = FLOW_A.slice(0, n).filter((c) => c.side === card.side).length;
+            return (
+              <path
+                key={n}
+                className={`is-${card.shadow}`}
+                data-flow-line={card.side}
+                data-i={i}
+                style={{ animationDelay: `${i * 0.16}s` }}
+              />
+            );
+          })}
+        </svg>
+
+        <img
+          className="chn-flow-icon"
+          data-flow-icon="1"
+          src={icon}
+          alt=""
+          aria-hidden="true"
+        />
 
         {(["a", "b"] as const).flatMap((group) => {
           const cards = group === "a" ? FLOW_A : FLOW_B;
@@ -1313,7 +1413,27 @@ const LP_CSS = `
   color: var(--cream);
 }
 /* The 512² icon has square white corners; 23% clips them to the mark. */
-.chn-nav-brand img, .chn-footer-brand img, .chn-flow-icon { border-radius: 23%; display: block; }
+.chn-nav-brand img, .chn-footer-brand img, /* Dashed connectors from the input cards into the icon, and out of it to the
+   output cards. Each path is drawn in its direction of travel, so one keyframe
+   moves every dash the right way. The dasharray period (5+11) matches the
+   dashoffset travel exactly, or the loop would visibly jump. */
+.chn-flow-lines {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; overflow: visible;
+}
+.chn-flow-lines path {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 5 11;
+  animation: chn-flow-dash 1.1s linear infinite;
+}
+.chn-flow-lines .is-ink { stroke: var(--ink); }
+.chn-flow-lines .is-terra { stroke: var(--terracotta); }
+.chn-flow-lines .is-green { stroke: var(--green); }
+@keyframes chn-flow-dash { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -16; } }
+
+.chn-flow-icon { border-radius: 23%; display: block; }
 .chn-nav-brand:hover { color: var(--cream); }
 .chn-nav-links { display: flex; gap: 30px; font-size: 14px; }
 .chn-nav-links a { color: color-mix(in srgb, var(--cream) 62%, transparent); }
@@ -1730,7 +1850,7 @@ const LP_CSS = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chn-marquee-track { animation: none; }
+  .chn-marquee-track, .chn-flow-lines path { animation: none; }
   .chn * { transition: none !important; }
 }
 `;

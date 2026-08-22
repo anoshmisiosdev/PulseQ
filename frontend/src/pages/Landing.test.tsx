@@ -131,6 +131,30 @@ describe("Landing link colours", () => {
   });
 });
 
+describe("Landing flow lines", () => {
+  it("draws one connector per beat-A card, coloured to match it", () => {
+    const markup = html();
+    expect(markup.match(/data-flow-line="left"/g)).toHaveLength(3);
+    expect(markup.match(/data-flow-line="right"/g)).toHaveLength(3);
+  });
+
+  it("has no path data in the markup, so it degrades to nothing without JS", () => {
+    // Geometry is measured at runtime; a decorative connector must never be
+    // the reason the page looks broken.
+    expect(html()).not.toMatch(/<path[^>]*\sd="/);
+  });
+
+  it("loops seamlessly: dash travel equals the dasharray period", () => {
+    const markup = html();
+    const dash = /stroke-dasharray: (\d+) (\d+);/.exec(markup);
+    const travel = /stroke-dashoffset: -(\d+); \}/.exec(markup);
+    expect(dash).not.toBeNull();
+    expect(travel).not.toBeNull();
+    const period = Number(dash![1]) + Number(dash![2]);
+    expect(Number(travel![1])).toBe(period);
+  });
+});
+
 describe("Landing scroll scenes", () => {
   it("renders the pinned scene with both beats and a full set of drift cards", () => {
     const markup = html();

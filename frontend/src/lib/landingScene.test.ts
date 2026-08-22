@@ -4,6 +4,8 @@ import {
   dialDash,
   driftReach,
   driftState,
+  flowLineOpacity,
+  flowPath,
   riskBand,
   riskScore,
   sceneProgress,
@@ -92,6 +94,55 @@ describe("driftState", () => {
   it("keeps a floor on reach so cards clear narrow viewports", () => {
     expect(driftReach(500)).toBe(380);
     expect(driftReach(2000)).toBe(840);
+  });
+});
+
+describe("flowPath", () => {
+  it("starts and ends exactly on the given points", () => {
+    const d = flowPath({ x: 100, y: 200 }, { x: 500, y: 300 });
+    expect(d.startsWith("M 100 200")).toBe(true);
+    expect(d.endsWith("500 300")).toBe(true);
+  });
+
+  it("leaves and arrives horizontally, so it reads as a flow not a wire", () => {
+    // Both control points sit level with their own endpoint.
+    const [, c1y, , c2y] = /C ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+)/
+      .exec(flowPath({ x: 0, y: 40 }, { x: 400, y: 90 }))!
+      .slice(1)
+      .map(Number);
+    expect(c1y).toBe(40);
+    expect(c2y).toBe(90);
+  });
+
+  it("bows toward the destination in either direction", () => {
+    const right = /C ([\d.-]+)/.exec(flowPath({ x: 0, y: 0 }, { x: 400, y: 0 }))!;
+    const left = /C ([\d.-]+)/.exec(flowPath({ x: 400, y: 0 }, { x: 0, y: 0 }))!;
+    expect(Number(right[1])).toBeGreaterThan(0);
+    expect(Number(left[1])).toBeLessThan(400);
+  });
+
+  it("survives coincident points without emitting NaN", () => {
+    expect(flowPath({ x: 10, y: 10 }, { x: 10, y: 10 })).not.toMatch(/NaN/);
+  });
+});
+
+describe("flowLineOpacity", () => {
+  it("holds a line back until its card has nearly landed", () => {
+    expect(flowLineOpacity(0, 1)).toBe(0);
+    expect(flowLineOpacity(0.55, 1)).toBe(0);
+    // (1 - .55) / .45 is 0.9999999999999999 in binary floating point.
+    expect(flowLineOpacity(1, 1)).toBeCloseTo(1, 10);
+  });
+
+  it("never outlives its beat", () => {
+    // visA is 0 through the dead zone, so the lines must be gone with it.
+    expect(flowLineOpacity(1, 0)).toBe(0);
+  });
+
+  it("rises with the card rather than snapping on", () => {
+    const mid = flowLineOpacity(0.775, 1);
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
   });
 });
 

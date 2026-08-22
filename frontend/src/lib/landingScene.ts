@@ -149,6 +149,8 @@ export interface DriftState {
   scale: number;
   rotate: number;
   opacity: number;
+  /** The eased 0→1 arrival of this card, reused by the flow lines. */
+  progress: number;
 }
 
 /**
@@ -169,7 +171,43 @@ export function driftState(
     scale: 0.94 + e * 0.06,
     rotate: side * (1 - e) * 5,
     opacity: clamp(e, 0, 1) * visibility,
+    progress: e,
   };
+}
+
+/* ── flow lines (dashed connectors into the app icon) ────────────────────── */
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * A cubic Bezier from one point to another, bowed horizontally.
+ *
+ * Control points sit level with their own endpoint, so the curve leaves the
+ * card horizontally and arrives at the icon horizontally however far apart the
+ * two are — a straight diagonal would read as a wire, not a flow. Drawn in the
+ * direction of travel, which is what lets one dash keyframe serve both columns.
+ */
+export function flowPath(from: Point, to: Point): string {
+  const bow = Math.abs(to.x - from.x) * 0.45;
+  const dir = to.x >= from.x ? 1 : -1;
+  const r = (n: number) => Number(n.toFixed(1));
+  return (
+    `M ${r(from.x)} ${r(from.y)} ` +
+    `C ${r(from.x + dir * bow)} ${r(from.y)} ` +
+    `${r(to.x - dir * bow)} ${r(to.y)} ` +
+    `${r(to.x)} ${r(to.y)}`
+  );
+}
+
+/**
+ * A line only draws once its card has nearly landed, so the connector reads as
+ * a consequence of the card arriving rather than something racing it in.
+ */
+export function flowLineOpacity(cardProgress: number, visibility: number): number {
+  return clamp((cardProgress - 0.55) / 0.45, 0, 1) * visibility;
 }
 
 /* ── signal feed (PORT-NOTES §3) ─────────────────────────────────────────── */
