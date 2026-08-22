@@ -282,7 +282,7 @@ async def detect_recoveries(
                     settings.n8n_recovery_webhook_url,
                     "recovery.attributed",
                     {
-                        "business_id": bid,
+                        "business_id": business_id,
                         "customer_id": match.customer_id,
                         "customer_name": customer.first_name,
                         "email": customer.email,

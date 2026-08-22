@@ -369,6 +369,9 @@ class Settings(BaseSettings):
     # Best-effort outbound notifications only; n8n never decides who's contactable
     # (that stays in compliance.py) and never receives anything it wasn't sent.
     n8n_recovery_webhook_url: str = ""
+    n8n_approval_webhook_url: str = ""
+    n8n_band_change_webhook_url: str = ""
+    n8n_sync_failure_webhook_url: str = ""
 
     @property
     def visitor_admin_email_set(self) -> set[str]:

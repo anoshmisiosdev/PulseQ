@@ -18,47 +18,54 @@ instance (email + password) — that's a one-time local setup screen, not a
 third-party account. You need to complete that step yourself in the browser;
 nothing here can (or should) fill in a password for you.
 
-Once logged in: **Workflows → Import from File** → pick
-`infra/n8n/recovery-review-request.json`. It's a starter:
-`Webhook → wait 2 days → send review-request email`. Open the "Send review
-request" node and point its SMTP credentials at whatever you send mail
-through (Resend supports SMTP), and drop in your actual Google/Yelp review
-link. Activate the workflow, then copy the webhook's **Production URL**
-(Webhook node → "Production URL", looks like
-`http://localhost:5678/webhook/pulse-recovery`).
+Once logged in: **Workflows → Import from File**, one at a time, for each
+file below. Each webhook node's **Production URL** (looks like
+`http://localhost:5678/webhook/<path>`) goes into `.env` as the matching
+setting, then activate the workflow.
 
-## Wire it into Pulse
+## The four that are wired and built
 
-```bash
-# .env
-N8N_RECOVERY_WEBHOOK_URL=http://localhost:5678/webhook/pulse-recovery
-```
+| File | `.env` setting | Fires from |
+|---|---|---|
+| `recovery-review-request.json` | `N8N_RECOVERY_WEBHOOK_URL` | `attribution.detect_recoveries()` — one `RecoveryAttribution` at a time |
+| `approval-slack.json` | `N8N_APPROVAL_WEBHOOK_URL` | `automations.dispatch_automations()` — batched per rule per run |
+| `band-change-compound-trigger.json` | `N8N_BAND_CHANGE_WEBHOOK_URL` | `ingest.refresh_scores()` — batched per tenant per re-score |
+| `sync-failure-alert.json` | `N8N_SYNC_FAILURE_WEBHOOK_URL` | `ingest.record_sync_error()` |
 
-That's it locally — `attribution.detect_recoveries()` already fires
-`n8n.notify(settings.n8n_recovery_webhook_url, "recovery.attributed", {...})`
-whenever a `RecoveryAttribution` is written (see `app/services/attribution.py`).
+All four go through `app/services/n8n.py` (best-effort, never blocks the
+caller) and skip anyone with `do_not_contact` set where the payload is
+customer-specific.
 
-For production: add `N8N_RECOVERY_WEBHOOK_URL` to
-`infra/aws/push-env-to-ssm.sh`'s `SECRET_KEYS`, push it, then add it to the
-ECS task definition's `secrets` block (same pattern as
-`GOOGLE_MAPS_SERVER_API_KEY`) — and self-host n8n somewhere reachable from
-there (an ECS task of its own, or n8n.cloud if you'd rather not run it). Not
-done yet — do it when this flow is actually going live, not before.
+Each imported workflow ends in a "Post to Slack" or "Send email" node with a
+comment saying **configure credentials** — open it and point it at your own
+Slack app / SMTP account. Two things intentionally *not* built:
+
+- **Slack reply → approve.** `approval-slack.json` posts "reply APPROVE
+  `<send_id>`" but nothing listens for that reply yet — closing that loop
+  needs a Slack app with an Events subscription calling back into
+  `POST /api/automations/sends/{id}/approve`, which is real, separate scope
+  (a public HTTPS endpoint + Slack app setup), not a template tweak.
+- **The compound-trigger logic itself.** `band-change-compound-trigger.json`
+  ships a single `band == high` IF node as a starting point — the actual
+  point of this workflow is that *you* build the multi-condition logic Pulse's
+  one-band-one-channel `AutomationRule` can't express, in n8n's UI.
+
+## For production
+
+Add whichever `N8N_*_WEBHOOK_URL` you're using to
+`infra/aws/push-env-to-ssm.sh`'s `SECRET_KEYS` (done for
+`N8N_RECOVERY_WEBHOOK_URL` already; add the other three the same way when
+they go live), push, then add it to the ECS task definition's `secrets` block
+(same pattern as `GOOGLE_MAPS_SERVER_API_KEY`) — and self-host n8n somewhere
+reachable from there (an ECS task of its own, or n8n.cloud). Not done yet —
+do it when a given flow is actually going live, not before.
 
 ## What's scoped but not built
 
-Each of these is the same shape (Pulse fires a webhook, n8n branches) — build
-one at a time, only when it's an actual priority:
+| Use case | Why it's not just another webhook |
+|---|---|
+| Long-tail integrations (Mindbody, etc.) | Needs n8n *pushing into* Pulse (new inbound endpoint shaped like `integrations/base.py::DataSourceAdapter`), not Pulse pushing out — and there's no concrete third-party source picked yet. Speculative until one is. |
+| Two-way customer replies | Needs a new inbound Twilio/Resend webhook, and has to interact with `compliance.py`'s STOP-word handling without weakening it — a dedicated pass, not a batch add-on. |
+| Booking handoff | Same shape as the above two — no chosen booking provider yet. |
 
-| Use case | Pulse trigger point | Payload |
-|---|---|---|
-| Approvals via Slack/SMS | `CampaignSend` created in `suggest`/`approve` mode, still `pending` | send id, customer, draft/empty body |
-| Compound automation triggers | `RiskScore` row written (append-only log) | customer id, band, score, reasons |
-| Long-tail integrations (Mindbody, etc.) | n8n → new endpoint shaped like `integrations/base.py::DataSourceAdapter` | third-party data, normalized by n8n |
-| Ops alerting | failed `SyncRun` row | sync type, error, business id |
-| Two-way customer replies | new: Twilio/Resend inbound webhook | raw inbound message |
-| Booking handoff | customer clicks a "book again" link | customer id, offer |
-
-Building all six now would be scaffolding for demand that doesn't exist yet —
-the review-request flow above is the one with zero compliance surface and an
-immediate, obvious payoff, so it's the one that's real.
+Building those now would be scaffolding for demand that doesn't exist yet.
